@@ -16,6 +16,7 @@ import (
 	"github.com/upendra7470/clip/parsers/json"
 	"github.com/upendra7470/clip/parsers/markdown"
 	"github.com/upendra7470/clip/parsers/pdf"
+	"github.com/upendra7470/clip/parsers/rtf"
 	"github.com/upendra7470/clip/parsers/txt"
 	"github.com/upendra7470/clip/parsers/xlsx"
 	"github.com/upendra7470/clip/parsers/xml"
@@ -113,6 +114,13 @@ func main() {
 	yamlParser := &yaml.Parser{}
 	if err := reg.Register(yamlParser.FileType(), yamlParser); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to register YAML parser: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Register RTF parser
+	rtfParser := &rtf.Parser{}
+	if err := reg.Register(rtfParser.FileType(), rtfParser); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register RTF parser: %v\n", err)
 		os.Exit(1)
 	}
 
