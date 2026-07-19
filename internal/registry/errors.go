@@ -9,7 +9,7 @@ import (
 
 // Common registry errors.
 var (
-	ErrParserNotFound      = errors.New("parser not found")
+	ErrParserNotFound        = errors.New("parser not found")
 	ErrDuplicateRegistration = errors.New("duplicate registration")
 )
 

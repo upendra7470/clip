@@ -8,10 +8,10 @@ import (
 
 func TestType(t *testing.T) {
 	tests := []struct {
-		name        string
-		path        string
-		wantType    filetype.FileType
-		wantErr     bool
+		name          string
+		path          string
+		wantType      filetype.FileType
+		wantErr       bool
 		errorContains string
 	}{
 		// PDF files

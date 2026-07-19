@@ -14,52 +14,52 @@ func TestParse(t *testing.T) {
 	tempDir := t.TempDir()
 
 	tests := []struct {
-		name        string
-		content     string
-		wantText    string
-		wantErr     bool
+		name          string
+		content       string
+		wantText      string
+		wantErr       bool
 		errorContains string
 	}{
 		{
-			name:        "empty file",
-			content:     "",
-			wantText:    "",
-			wantErr:     false,
+			name:          "empty file",
+			content:       "",
+			wantText:      "",
+			wantErr:       false,
 			errorContains: "",
 		},
 		{
-			name:        "single line",
-			content:     "Hello, World!",
-			wantText:    "Hello, World!",
-			wantErr:     false,
+			name:          "single line",
+			content:       "Hello, World!",
+			wantText:      "Hello, World!",
+			wantErr:       false,
 			errorContains: "",
 		},
 		{
-			name:        "multiple lines",
-			content:     "Line 1\nLine 2\nLine 3",
-			wantText:    "Line 1\nLine 2\nLine 3",
-			wantErr:     false,
+			name:          "multiple lines",
+			content:       "Line 1\nLine 2\nLine 3",
+			wantText:      "Line 1\nLine 2\nLine 3",
+			wantErr:       false,
 			errorContains: "",
 		},
 		{
-			name:        "unicode text",
-			content:     "Hello, 世界! 🌍\nПривет, мир!",
-			wantText:    "Hello, 世界! 🌍\nПривет, мир!",
-			wantErr:     false,
+			name:          "unicode text",
+			content:       "Hello, 世界! 🌍\nПривет, мир!",
+			wantText:      "Hello, 世界! 🌍\nПривет, мир!",
+			wantErr:       false,
 			errorContains: "",
 		},
 		{
-			name:        "trailing newlines",
-			content:     "Text with trailing newlines\n\n\n",
-			wantText:    "Text with trailing newlines\n\n\n",
-			wantErr:     false,
+			name:          "trailing newlines",
+			content:       "Text with trailing newlines\n\n\n",
+			wantText:      "Text with trailing newlines\n\n\n",
+			wantErr:       false,
 			errorContains: "",
 		},
 		{
-			name:        "whitespace preservation",
-			content:     "  leading spaces\n\tabs and tabs  \n  trailing spaces  ",
-			wantText:    "  leading spaces\n\tabs and tabs  \n  trailing spaces  ",
-			wantErr:     false,
+			name:          "whitespace preservation",
+			content:       "  leading spaces\n\tabs and tabs  \n  trailing spaces  ",
+			wantText:      "  leading spaces\n\tabs and tabs  \n  trailing spaces  ",
+			wantErr:       false,
 			errorContains: "",
 		},
 	}
@@ -78,9 +78,9 @@ func TestParse(t *testing.T) {
 			req := parser.ParseRequest{
 				File: filePath,
 				Selection: parser.Selection{
-					Pages: "1-2", // Should be ignored
+					Pages: "1-2",       // Should be ignored
 					Range: "1:10-2:20", // Should be ignored
-					Query: "test", // Should be ignored
+					Query: "test",      // Should be ignored
 				},
 			}
 

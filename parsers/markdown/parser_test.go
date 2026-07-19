@@ -14,80 +14,80 @@ func TestParse(t *testing.T) {
 	tempDir := t.TempDir()
 
 	tests := []struct {
-		name        string
-		content     string
-		wantText    string
-		wantErr     bool
+		name          string
+		content       string
+		wantText      string
+		wantErr       bool
 		errorContains string
 	}{
 		{
-			name:        "empty file",
-			content:     "",
-			wantText:    "",
-			wantErr:     false,
+			name:          "empty file",
+			content:       "",
+			wantText:      "",
+			wantErr:       false,
 			errorContains: "",
 		},
 		{
-			name:        "plain text",
-			content:     "Just plain text",
-			wantText:    "Just plain text",
-			wantErr:     false,
+			name:          "plain text",
+			content:       "Just plain text",
+			wantText:      "Just plain text",
+			wantErr:       false,
 			errorContains: "",
 		},
 		{
-			name:        "headings",
-			content:     "# Heading 1\n## Heading 2\n### Heading 3",
-			wantText:    "Heading 1\nHeading 2\nHeading 3",
-			wantErr:     false,
+			name:          "headings",
+			content:       "# Heading 1\n## Heading 2\n### Heading 3",
+			wantText:      "Heading 1\nHeading 2\nHeading 3",
+			wantErr:       false,
 			errorContains: "",
 		},
 		{
-			name:        "bold and italic",
-			content:     "This is **bold** and this is *italic*",
-			wantText:    "This is bold and this is italic",
-			wantErr:     false,
+			name:          "bold and italic",
+			content:       "This is **bold** and this is *italic*",
+			wantText:      "This is bold and this is italic",
+			wantErr:       false,
 			errorContains: "",
 		},
 		{
-			name:        "links",
-			content:     "Visit [Google](https://google.com) and [GitHub](https://github.com)",
-			wantText:    "Visit Google and GitHub",
-			wantErr:     false,
+			name:          "links",
+			content:       "Visit [Google](https://google.com) and [GitHub](https://github.com)",
+			wantText:      "Visit Google and GitHub",
+			wantErr:       false,
 			errorContains: "",
 		},
 		{
-			name:        "unordered lists",
-			content:     "- Item one\n- Item two\n- Item three",
-			wantText:    "Item one\nItem two\nItem three",
-			wantErr:     false,
+			name:          "unordered lists",
+			content:       "- Item one\n- Item two\n- Item three",
+			wantText:      "Item one\nItem two\nItem three",
+			wantErr:       false,
 			errorContains: "",
 		},
 		{
-			name:        "ordered lists",
-			content:     "1. First item\n2. Second item\n3. Third item",
-			wantText:    "First item\nSecond item\nThird item",
-			wantErr:     false,
+			name:          "ordered lists",
+			content:       "1. First item\n2. Second item\n3. Third item",
+			wantText:      "First item\nSecond item\nThird item",
+			wantErr:       false,
 			errorContains: "",
 		},
 		{
-			name:        "code blocks",
-			content:     "Some text\n```go\nfmt.Println(\"hello\")\n```\nMore text",
-			wantText:    "Some text\n\nMore text",
-			wantErr:     false,
+			name:          "code blocks",
+			content:       "Some text\n```go\nfmt.Println(\"hello\")\n```\nMore text",
+			wantText:      "Some text\n\nMore text",
+			wantErr:       false,
 			errorContains: "",
 		},
 		{
-			name:        "mixed markdown",
-			content:     "# Title\n\nThis is **important** text.\n\n- Feature one\n- Feature two\n\n[Learn more](https://example.com)",
-			wantText:    "Title\n\nThis is important text.\n\nFeature one\nFeature two\n\nLearn more",
-			wantErr:     false,
+			name:          "mixed markdown",
+			content:       "# Title\n\nThis is **important** text.\n\n- Feature one\n- Feature two\n\n[Learn more](https://example.com)",
+			wantText:      "Title\n\nThis is important text.\n\nFeature one\nFeature two\n\nLearn more",
+			wantErr:       false,
 			errorContains: "",
 		},
 		{
-			name:        "unicode content",
-			content:     "# Hello 世界 🌍\n\nThis is **bold 文字** and *italic 文字*.",
-			wantText:    "Hello 世界 🌍\n\nThis is bold 文字 and italic 文字.",
-			wantErr:     false,
+			name:          "unicode content",
+			content:       "# Hello 世界 🌍\n\nThis is **bold 文字** and *italic 文字*.",
+			wantText:      "Hello 世界 🌍\n\nThis is bold 文字 and italic 文字.",
+			wantErr:       false,
 			errorContains: "",
 		},
 	}
@@ -106,9 +106,9 @@ func TestParse(t *testing.T) {
 			req := parser.ParseRequest{
 				File: filePath,
 				Selection: parser.Selection{
-					Pages: "1-2", // Should be ignored
+					Pages: "1-2",       // Should be ignored
 					Range: "1:10-2:20", // Should be ignored
-					Query: "test", // Should be ignored
+					Query: "test",      // Should be ignored
 				},
 			}
 

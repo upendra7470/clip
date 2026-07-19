@@ -5,8 +5,8 @@ import (
 	"os"
 	"unicode/utf8"
 
-	"github.com/upendra7470/clip/internal/parser"
 	"github.com/upendra7470/clip/internal/filetype"
+	"github.com/upendra7470/clip/internal/parser"
 )
 
 // TextParserError represents an error that occurs during text file parsing.
