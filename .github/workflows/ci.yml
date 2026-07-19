@@ -2,24 +2,36 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   test:
-    name: Test
+    name: Build and Test
     runs-on: ubuntu-latest
 
     steps:
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.21'
-      id: go
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Check out code
-      uses: actions/checkout@v3
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
 
-    - name: Run tests
-      run: go test ./...
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Check formatting
+        run: |
+          test -z "$(gofmt -l .)"
+
+      - name: Build
+        run: go build ./...
+
+      - name: Run tests
+        run: go test ./...
