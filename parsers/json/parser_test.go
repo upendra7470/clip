@@ -115,11 +115,19 @@ func TestParseSimpleObject(t *testing.T) {
 		t.Fatalf("Parse() unexpected error: %v", err)
 	}
 
-	// Check that all fields are present
-	expectedFields := []string{"name: Sai", "age: 19", "city: Hyderabad"}
-	for _, field := range expectedFields {
-		if !strings.Contains(result.Text, field) {
-			t.Errorf("Parse() result missing expected field %q: %q", field, result.Text)
+	// Check that values are present (no keys)
+	expectedValues := []string{"Sai", "19", "Hyderabad"}
+	for _, value := range expectedValues {
+		if !strings.Contains(result.Text, value) {
+			t.Errorf("Parse() result missing expected value %q: %q", value, result.Text)
+		}
+	}
+
+	// Check that keys are NOT present
+	unexpectedKeys := []string{"name:", "age:", "city:"}
+	for _, key := range unexpectedKeys {
+		if strings.Contains(result.Text, key) {
+			t.Errorf("Parse() result should not contain keys %q: %q", key, result.Text)
 		}
 	}
 }
@@ -153,11 +161,19 @@ func TestParseNestedObject(t *testing.T) {
 		t.Fatalf("Parse() unexpected error: %v", err)
 	}
 
-	// Check that nested fields are present
-	expectedFields := []string{"name: Sai", "age: 19", "city: Hyderabad", "country: India"}
-	for _, field := range expectedFields {
-		if !strings.Contains(result.Text, field) {
-			t.Errorf("Parse() result missing expected field %q: %q", field, result.Text)
+	// Check that values are present (no keys)
+	expectedValues := []string{"Sai", "19", "Hyderabad", "India"}
+	for _, value := range expectedValues {
+		if !strings.Contains(result.Text, value) {
+			t.Errorf("Parse() result missing expected value %q: %q", value, result.Text)
+		}
+	}
+
+	// Check that keys are NOT present
+	unexpectedKeys := []string{"name:", "age:", "city:", "country:"}
+	for _, key := range unexpectedKeys {
+		if strings.Contains(result.Text, key) {
+			t.Errorf("Parse() result should not contain keys %q: %q", key, result.Text)
 		}
 	}
 }
@@ -191,12 +207,17 @@ func TestParseArray(t *testing.T) {
 		t.Fatalf("Parse() unexpected error: %v", err)
 	}
 
-	// Check that both names are present
-	if !strings.Contains(result.Text, "name: Sai") {
-		t.Errorf("Parse() result missing 'name: Sai': %q", result.Text)
+	// Check that both names are present (values only, no keys)
+	if !strings.Contains(result.Text, "Sai") {
+		t.Errorf("Parse() result missing 'Sai': %q", result.Text)
 	}
-	if !strings.Contains(result.Text, "name: Ravi") {
-		t.Errorf("Parse() result missing 'name: Ravi': %q", result.Text)
+	if !strings.Contains(result.Text, "Ravi") {
+		t.Errorf("Parse() result missing 'Ravi': %q", result.Text)
+	}
+
+	// Check that keys are NOT present
+	if strings.Contains(result.Text, "name:") {
+		t.Errorf("Parse() result should not contain keys: %q", result.Text)
 	}
 }
 
@@ -261,15 +282,23 @@ func TestParseBooleanAndNull(t *testing.T) {
 		t.Fatalf("Parse() unexpected error: %v", err)
 	}
 
-	// Check that boolean and null values are present
-	if !strings.Contains(result.Text, "active: true") {
-		t.Errorf("Parse() result missing 'active: true': %q", result.Text)
+	// Check that boolean and null values are present (values only, no keys)
+	if !strings.Contains(result.Text, "true") {
+		t.Errorf("Parse() result missing 'true': %q", result.Text)
 	}
-	if !strings.Contains(result.Text, "verified: false") {
-		t.Errorf("Parse() result missing 'verified: false': %q", result.Text)
+	if !strings.Contains(result.Text, "false") {
+		t.Errorf("Parse() result missing 'false': %q", result.Text)
 	}
-	if !strings.Contains(result.Text, "optional: null") {
-		t.Errorf("Parse() result missing 'optional: null': %q", result.Text)
+	if !strings.Contains(result.Text, "null") {
+		t.Errorf("Parse() result missing 'null': %q", result.Text)
+	}
+
+	// Check that keys are NOT present
+	unexpectedKeys := []string{"active:", "verified:", "optional:"}
+	for _, key := range unexpectedKeys {
+		if strings.Contains(result.Text, key) {
+			t.Errorf("Parse() result should not contain keys %q: %q", key, result.Text)
+		}
 	}
 }
 
@@ -300,12 +329,26 @@ func TestParseNumbers(t *testing.T) {
 		t.Fatalf("Parse() unexpected error: %v", err)
 	}
 
-	// Check that numbers are present
-	if !strings.Contains(result.Text, "age: 19") {
-		t.Errorf("Parse() result missing 'age: 19': %q", result.Text)
+	// Check that numbers are present (values only, no keys)
+	if !strings.Contains(result.Text, "19") {
+		t.Errorf("Parse() result missing '19': %q", result.Text)
 	}
-	if !strings.Contains(result.Text, "price: 29.99") {
-		t.Errorf("Parse() result missing 'price: 29.99': %q", result.Text)
+	if !strings.Contains(result.Text, "29.99") {
+		t.Errorf("Parse() result missing '29.99': %q", result.Text)
+	}
+	if !strings.Contains(result.Text, "0") {
+		t.Errorf("Parse() result missing '0': %q", result.Text)
+	}
+	if !strings.Contains(result.Text, "-5.5") {
+		t.Errorf("Parse() result missing '-5.5': %q", result.Text)
+	}
+
+	// Check that keys are NOT present
+	unexpectedKeys := []string{"age:", "price:", "quantity:", "temperature:"}
+	for _, key := range unexpectedKeys {
+		if strings.Contains(result.Text, key) {
+			t.Errorf("Parse() result should not contain keys %q: %q", key, result.Text)
+		}
 	}
 }
 

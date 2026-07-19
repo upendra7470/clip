@@ -73,51 +73,81 @@ func extractTextFromJSON(data interface{}) string {
 
 	switch v := data.(type) {
 	case map[string]interface{}:
-		extractFromObject(v, &result, "")
+		extractFromObject(v, &result)
 	case []interface{}:
 		extractFromArray(v, &result)
 	default:
 		// Handle primitive values
 		if s, ok := v.(string); ok {
+			if result.Len() > 0 {
+				result.WriteString("\n")
+			}
 			result.WriteString(s)
+		} else if num, ok := v.(float64); ok {
+			if result.Len() > 0 {
+				result.WriteString("\n")
+			}
+			// Handle numbers (JSON numbers become float64)
+			if num == float64(int(num)) {
+				fmt.Fprintf(&result, "%d", int(num))
+			} else {
+				fmt.Fprintf(&result, "%f", num)
+			}
+		} else if b, ok := v.(bool); ok {
+			if result.Len() > 0 {
+				result.WriteString("\n")
+			}
+			fmt.Fprintf(&result, "%t", b)
+		} else if v == nil {
+			if result.Len() > 0 {
+				result.WriteString("\n")
+			}
+			result.WriteString("null")
 		}
 	}
 
 	return strings.TrimSpace(result.String())
 }
 
-// extractFromObject extracts text from JSON object
-func extractFromObject(obj map[string]interface{}, result *strings.Builder, indent string) {
-	first := true
-	for key, value := range obj {
-		if !first && result.Len() > 0 {
-			result.WriteString("\n")
-		}
-		first = false
-
-		result.WriteString(indent + key + ": ")
-
+// extractFromObject extracts text from JSON object (values only, no keys)
+func extractFromObject(obj map[string]interface{}, result *strings.Builder) {
+	for _, value := range obj {
 		switch v := value.(type) {
 		case string:
+			if result.Len() > 0 {
+				result.WriteString("\n")
+			}
 			result.WriteString(v)
 		case float64:
-			// Handle numbers (JSON numbers become float64)
+			if result.Len() > 0 {
+				result.WriteString("\n")
+			}
+			// Handle numbers
 			if v == float64(int(v)) {
 				fmt.Fprintf(result, "%d", int(v))
 			} else {
 				fmt.Fprintf(result, "%f", v)
 			}
 		case bool:
+			if result.Len() > 0 {
+				result.WriteString("\n")
+			}
 			fmt.Fprintf(result, "%t", v)
 		case nil:
+			if result.Len() > 0 {
+				result.WriteString("\n")
+			}
 			result.WriteString("null")
 		case map[string]interface{}:
-			// Nested object - recurse with indentation
-			extractFromObject(v, result, indent+"  ")
+			// Nested object - recurse
+			extractFromObject(v, result)
 		case []interface{}:
 			// Array - handle each element
 			extractFromArray(v, result)
 		default:
+			if result.Len() > 0 {
+				result.WriteString("\n")
+			}
 			result.WriteString(fmt.Sprintf("%v", v))
 		}
 	}
@@ -126,7 +156,10 @@ func extractFromObject(obj map[string]interface{}, result *strings.Builder, inde
 // extractFromArray extracts text from JSON array
 func extractFromArray(arr []interface{}, result *strings.Builder) {
 	for i, item := range arr {
-		if i > 0 {
+		// Add newline if result already has content and this is not the first element
+		if result.Len() > 0 && i == 0 {
+			result.WriteString("\n")
+		} else if i > 0 {
 			result.WriteString("\n")
 		}
 
@@ -146,7 +179,7 @@ func extractFromArray(arr []interface{}, result *strings.Builder) {
 			result.WriteString("null")
 		case map[string]interface{}:
 			// Nested object in array
-			extractFromObject(v, result, "")
+			extractFromObject(v, result)
 		case []interface{}:
 			// Nested array
 			extractFromArray(v, result)
