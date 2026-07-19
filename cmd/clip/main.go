@@ -10,6 +10,7 @@ import (
 	"github.com/upendra7470/clip/internal/application"
 	"github.com/upendra7470/clip/internal/registry"
 	"github.com/upendra7470/clip/parsers/markdown"
+	"github.com/upendra7470/clip/parsers/pdf"
 	"github.com/upendra7470/clip/parsers/txt"
 )
 
@@ -48,6 +49,13 @@ func main() {
 	markdownParser := &markdown.Parser{}
 	if err := reg.Register(markdownParser.FileType(), markdownParser); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to register Markdown parser: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Register PDF parser
+	pdfParser := &pdf.Parser{}
+	if err := reg.Register(pdfParser.FileType(), pdfParser); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register PDF parser: %v\n", err)
 		os.Exit(1)
 	}
 
