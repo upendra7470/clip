@@ -18,6 +18,7 @@ import (
 	"github.com/upendra7470/clip/parsers/ods"
 	"github.com/upendra7470/clip/parsers/odt"
 	"github.com/upendra7470/clip/parsers/pdf"
+	"github.com/upendra7470/clip/parsers/pptx"
 	"github.com/upendra7470/clip/parsers/rtf"
 	"github.com/upendra7470/clip/parsers/txt"
 	"github.com/upendra7470/clip/parsers/xlsx"
@@ -74,6 +75,13 @@ func main() {
 	docxParser := &docx.Parser{}
 	if err := reg.Register(docxParser.FileType(), docxParser); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to register DOCX parser: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Register PPTX parser
+	pptxParser := &pptx.Parser{}
+	if err := reg.Register(pptxParser.FileType(), pptxParser); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register PPTX parser: %v\n", err)
 		os.Exit(1)
 	}
 
