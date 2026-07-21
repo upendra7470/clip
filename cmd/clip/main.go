@@ -10,6 +10,7 @@ import (
 
 	"github.com/upendra7470/clip/internal/application"
 	"github.com/upendra7470/clip/internal/clipboard"
+	"github.com/upendra7470/clip/internal/parser"
 	"github.com/upendra7470/clip/internal/registry"
 	"github.com/upendra7470/clip/internal/resolver"
 	"github.com/upendra7470/clip/parsers/csv"
@@ -181,6 +182,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Get optional page range argument (second non-flag argument)
+	var pageRange *parser.PageRange
+	pageRangeArg := getPageRangeArg()
+	if pageRangeArg != "" {
+		parsedRange, err := parser.ParsePageRange(pageRangeArg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			showHelp()
+			os.Exit(1)
+		}
+		pageRange = &parsedRange
+	}
+
 	// Create context with timeout to prevent hanging
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -200,14 +214,24 @@ func main() {
 	}
 
 	// Run the extraction pipeline
-	if err := app.Extract(ctx, resolvedPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	var extractErr error
+	if pageRange != nil {
+		extractErr = app.ExtractWithRange(ctx, resolvedPath, pageRange)
+	} else {
+		extractErr = app.Extract(ctx, resolvedPath)
+	}
+	if extractErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", extractErr)
 		os.Exit(1)
 	}
 
 	// Success
 	fmt.Printf("✓ Found: %s\n", resolvedPath)
-	fmt.Println("✓ Extracted text successfully")
+	if pageRange != nil {
+		fmt.Printf("✓ Extracted pages %d-%d successfully\n", pageRange.Start, pageRange.End)
+	} else {
+		fmt.Println("✓ Extracted text successfully")
+	}
 	fmt.Println("✓ Copied to clipboard")
 }
 
@@ -222,26 +246,33 @@ func showHelp() {
 	fmt.Println("Clip - Universal Document Extractor")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println()
 	fmt.Println("    clip <filename>")
+	fmt.Println("    clip <filename> <page>")
+	fmt.Println("    clip <filename> <start>-<end>")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("    clip report.pdf")
+	fmt.Println("    clip report.pdf 5")
+	fmt.Println("    clip report.pdf 5-10")
 	fmt.Println()
 	fmt.Println("Supported formats:")
+	fmt.Println("  PDF (with page range support)")
+	fmt.Println("  DOCX")
+	fmt.Println("  TXT")
+	fmt.Println("  Markdown")
+	fmt.Println("  CSV")
+	fmt.Println("  XLSX")
+	fmt.Println("  JSON")
+	fmt.Println("  XML")
+	fmt.Println("  HTML")
+	fmt.Println("  YAML")
+	fmt.Println("  RTF")
+	fmt.Println("  ODT")
+	fmt.Println("  ODS")
+	fmt.Println("  PPTX")
+	fmt.Println("  PPT")
 	fmt.Println()
-	fmt.Println("TXT")
-	fmt.Println("MD")
-	fmt.Println("PDF")
-	fmt.Println("DOCX")
-	fmt.Println("CSV")
-	fmt.Println("XLSX")
-	fmt.Println("JSON")
-	fmt.Println("XML")
-	fmt.Println("HTML")
-	fmt.Println("YAML")
-	fmt.Println("RTF")
-	fmt.Println("ODT")
-	fmt.Println("ODS")
-	fmt.Println("PPTX")
-	fmt.Println("PPT")
+	fmt.Println("Note: Page ranges are currently supported for PDF documents only.")
 }
 
 // getFilePath extracts the file path from command line arguments.
@@ -256,5 +287,38 @@ func getFilePath() string {
 		}
 		return arg
 	}
+	return ""
+}
+
+// getPageRangeArg extracts the page range argument from command line arguments.
+// Returns the second non-flag argument if it exists and looks like a page range.
+func getPageRangeArg() string {
+	nonFlagArgs := []string{}
+	for _, arg := range os.Args[1:] {
+		if arg == "--help" || arg == "-h" || arg == "--version" {
+			continue
+		}
+		if len(arg) > 0 && arg[0] == '-' {
+			continue // Skip other flags
+		}
+		nonFlagArgs = append(nonFlagArgs, arg)
+	}
+
+	// If there are at least 2 non-flag arguments, the second one might be a page range
+	if len(nonFlagArgs) >= 2 {
+		// Check if the second argument looks like a page range (contains digits and possibly a dash)
+		secondArg := nonFlagArgs[1]
+		hasDigits := false
+		for _, c := range secondArg {
+			if c >= '0' && c <= '9' {
+				hasDigits = true
+			}
+		}
+		// If it has digits, treat it as a potential page range
+		if hasDigits {
+			return secondArg
+		}
+	}
+
 	return ""
 }

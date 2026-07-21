@@ -15,6 +15,19 @@ type Parser interface {
 	Parse(ctx context.Context, req ParseRequest) (ParseResult, error)
 }
 
+// RangeParser is an optional interface that parsers can implement
+// to support page range extraction.
+type RangeParser interface {
+	Parser
+
+	// ParseRange extracts text from a specific page range in a document.
+	// The context allows for cancellation and timeouts.
+	// The ParseRequest contains the file path and any selection criteria.
+	// start and end are 1-based page numbers.
+	// Returns the extracted text in ParseResult or an error.
+	ParseRange(ctx context.Context, req ParseRequest, start, end int) (ParseResult, error)
+}
+
 // ParseRequest contains the input parameters for parsing a document.
 type ParseRequest struct {
 	// File is the path to the document file to parse.

@@ -34,6 +34,12 @@ func New(reg *registry.Registry, clipboard Clipboard) *Application {
 // Extract processes a document file through the complete pipeline:
 // detect → lookup parser → parse → copy to clipboard.
 func (app *Application) Extract(ctx context.Context, filePath string) error {
+	return app.ExtractWithRange(ctx, filePath, nil)
+}
+
+// ExtractWithRange processes a document file with optional page range through the complete pipeline:
+// detect → lookup parser → parse → copy to clipboard.
+func (app *Application) ExtractWithRange(ctx context.Context, filePath string, pageRange *parser.PageRange) error {
 	// Step 1: Detect file type
 	fileType, err := detect.Type(filePath)
 	if err != nil {
@@ -46,7 +52,7 @@ func (app *Application) Extract(ctx context.Context, filePath string) error {
 	}
 
 	// Step 2: Lookup parser
-	p, err := app.reg.Lookup(fileType)
+	parserObj, err := app.reg.Lookup(fileType)
 	if err != nil {
 		return fmt.Errorf("parser not found for file type: %s", fileType)
 	}
@@ -58,7 +64,30 @@ func (app *Application) Extract(ctx context.Context, filePath string) error {
 		Selection: parser.Selection{},
 	}
 
-	result, err := p.Parse(ctx, req)
+	var result parser.ParseResult
+
+	// Check if parser supports range extraction and if a range was requested
+	if pageRange != nil {
+		if rangeParser, ok := parserObj.(parser.RangeParser); ok {
+			// Use range-specific parsing if available
+			var parseErr error
+			result, parseErr = rangeParser.ParseRange(ctx, req, pageRange.Start, pageRange.End)
+			if parseErr != nil {
+				err = parseErr
+			}
+		} else {
+			// Parser doesn't support ranges
+			return fmt.Errorf("page ranges are only supported for PDF files")
+		}
+	} else {
+		// Normal parsing (full document)
+		var parseErr error
+		result, parseErr = parserObj.Parse(ctx, req)
+		if parseErr != nil {
+			err = parseErr
+		}
+	}
+
 	if err != nil {
 		// Check for permission errors
 		if os.IsPermission(err) {
