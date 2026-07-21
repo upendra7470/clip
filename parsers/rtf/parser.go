@@ -37,9 +37,12 @@ func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.Par
 	fileInfo, err := os.Stat(req.File)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return parser.ParseResult{}, wrapError("file does not exist", err)
+			return parser.ParseResult{}, wrapError("Could not open RTF file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
 		}
-		return parser.ParseResult{}, wrapError("file cannot be accessed", err)
+		if errors.Is(err, os.ErrPermission) {
+			return parser.ParseResult{}, wrapError("Could not open RTF file:\n"+req.File+"\n\nReason:\npermission denied", err)
+		}
+		return parser.ParseResult{}, wrapError("Could not open RTF file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
 	}
 
 	// Check if file is empty

@@ -22,7 +22,7 @@ func TestMissingFile(t *testing.T) {
 	p := &Parser{}
 	_, err := p.Parse(context.Background(), parser.ParseRequest{File: "nonexistent.pptx"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to open PPTX file")
+	assert.Contains(t, err.Error(), "Could not open PPTX file")
 }
 
 func TestInvalidZIP(t *testing.T) {

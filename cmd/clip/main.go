@@ -29,7 +29,7 @@ import (
 	"github.com/upendra7470/clip/parsers/yaml"
 )
 
-const version = "dev"
+const version = "1.0.0"
 
 func main() {
 	// Parse command line flags
@@ -46,7 +46,7 @@ func main() {
 
 	// Show version if requested
 	if *versionFlag {
-		fmt.Printf("Clip version %s\n", version)
+		fmt.Printf("Clip v%s\n", version)
 		return
 	}
 
@@ -206,7 +206,9 @@ func main() {
 	}
 
 	// Success
-	fmt.Println("✓ Copied to clipboard.")
+	fmt.Printf("✓ Found: %s\n", resolvedPath)
+	fmt.Println("✓ Extracted text successfully")
+	fmt.Println("✓ Copied to clipboard")
 }
 
 // realClipboard adapts the clipboard package to the application.Clipboard interface.
@@ -217,16 +219,29 @@ func (r *realClipboard) Copy(text string) error {
 }
 
 func showHelp() {
-	fmt.Println("Clip")
-	fmt.Println()
-	fmt.Println("A fast CLI for extracting text from documents.")
+	fmt.Println("Clip - Universal Document Extractor")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  clip [file]")
 	fmt.Println()
-	fmt.Println("Flags:")
-	fmt.Println("  --help, -h    Show help message")
-	fmt.Println("  --version     Show version information")
+	fmt.Println("    clip <filename>")
+	fmt.Println()
+	fmt.Println("Supported formats:")
+	fmt.Println()
+	fmt.Println("TXT")
+	fmt.Println("MD")
+	fmt.Println("PDF")
+	fmt.Println("DOCX")
+	fmt.Println("CSV")
+	fmt.Println("XLSX")
+	fmt.Println("JSON")
+	fmt.Println("XML")
+	fmt.Println("HTML")
+	fmt.Println("YAML")
+	fmt.Println("RTF")
+	fmt.Println("ODT")
+	fmt.Println("ODS")
+	fmt.Println("PPTX")
+	fmt.Println("PPT")
 }
 
 // getFilePath extracts the file path from command line arguments.

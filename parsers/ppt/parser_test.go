@@ -23,7 +23,7 @@ func TestMissingFile(t *testing.T) {
 
 	_, err := p.Parse(context.Background(), req)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to open PPT file")
+	assert.Contains(t, err.Error(), "Could not open PPT file")
 }
 
 func TestEmptyFile(t *testing.T) {

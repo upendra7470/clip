@@ -144,8 +144,8 @@ func TestParseMissingFile(t *testing.T) {
 		t.Fatal("Parse() expected error for missing file, got nil")
 	}
 
-	if !containsError(err.Error(), "failed to read markdown file") {
-		t.Errorf("Parse() error = %q, want to contain 'failed to read markdown file'", err.Error())
+	if !containsError(err.Error(), "Could not open Markdown file") {
+		t.Errorf("Parse() error = %q, want to contain 'Could not open Markdown file'", err.Error())
 	}
 }
 
@@ -171,8 +171,8 @@ func TestErrorWrapping(t *testing.T) {
 	}
 
 	// Check that error contains expected message
-	if !containsError(err.Error(), "failed to read markdown file") {
-		t.Errorf("Error message = %q, want to contain 'failed to read markdown file'", err.Error())
+	if !containsError(err.Error(), "Could not open Markdown file") {
+		t.Errorf("Error message = %q, want to contain 'Could not open Markdown file'", err.Error())
 	}
 }
 

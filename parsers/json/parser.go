@@ -36,7 +36,13 @@ func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.Par
 	// Read the file content
 	content, err := os.ReadFile(req.File)
 	if err != nil {
-		return parser.ParseResult{}, wrapError("failed to read JSON file", err)
+		if os.IsNotExist(err) {
+			return parser.ParseResult{}, wrapError("Could not open JSON file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		}
+		if os.IsPermission(err) {
+			return parser.ParseResult{}, wrapError("Could not open JSON file:\n"+req.File+"\n\nReason:\npermission denied", err)
+		}
+		return parser.ParseResult{}, wrapError("Could not open JSON file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
 	}
 
 	// Check if file is empty

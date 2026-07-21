@@ -116,8 +116,8 @@ func TestParseMissingFile(t *testing.T) {
 		t.Fatal("Parse() expected error for missing file, got nil")
 	}
 
-	if !containsError(err.Error(), "file cannot be opened") {
-		t.Errorf("Parse() error = %q, want to contain 'file cannot be opened'", err.Error())
+	if !containsError(err.Error(), "Could not open TXT file") {
+		t.Errorf("Parse() error = %q, want to contain 'Could not open TXT file'", err.Error())
 	}
 }
 
@@ -171,8 +171,8 @@ func TestErrorWrapping(t *testing.T) {
 	}
 
 	// Check that error contains expected message
-	if !containsError(err.Error(), "file cannot be opened") {
-		t.Errorf("Error message = %q, want to contain 'file cannot be opened'", err.Error())
+	if !containsError(err.Error(), "Could not open TXT file") {
+		t.Errorf("Error message = %q, want to contain 'Could not open TXT file'", err.Error())
 	}
 }
 

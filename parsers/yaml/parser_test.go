@@ -24,7 +24,7 @@ func TestYAMLParser_MissingFile(t *testing.T) {
 
 	_, err := p.Parse(context.Background(), req)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to read YAML file")
+	assert.Contains(t, err.Error(), "Could not open YAML file")
 }
 
 func TestYAMLParser_EmptyFile(t *testing.T) {

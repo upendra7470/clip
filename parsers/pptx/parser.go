@@ -41,7 +41,13 @@ func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.Par
 	// Open the PPTX file (which is a ZIP archive)
 	file, err := os.Open(req.File)
 	if err != nil {
-		return parser.ParseResult{}, wrapError("failed to open PPTX file", err)
+		if os.IsNotExist(err) {
+			return parser.ParseResult{}, wrapError("Could not open PPTX file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		}
+		if os.IsPermission(err) {
+			return parser.ParseResult{}, wrapError("Could not open PPTX file:\n"+req.File+"\n\nReason:\npermission denied", err)
+		}
+		return parser.ParseResult{}, wrapError("Could not open PPTX file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
 	}
 	defer file.Close()
 

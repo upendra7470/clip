@@ -1,46 +1,28 @@
 # Clip Installation Guide
 
-## Recommended Installation Method
+## Quick Installation
 
-To ensure the Go Clip binary is always executed and doesn't conflict with Python's clip command:
-
-### 1. Build the Go binary
+### Using Make (Recommended)
 
 ```bash
-go build -o clip ./cmd/clip
+make install
 ```
 
-### 2. Install globally (PATH-safe setup)
+This will:
+1. Build the Clip binary
+2. Install it to `/usr/local/bin/clip`
+3. Make it executable
+4. Clean up build artifacts
 
-```bash
-sudo mv clip /usr/local/bin/clip
-```
-
-### 3. Verify installation
-
-```bash
-which clip
-```
-
-This should output: `/usr/local/bin/clip`
-
-```bash
-clip --version
-```
-
-This should output: `Clip version dev`
-
-## Alternative Installation Methods
-
-### Using go install (recommended for developers)
+### Using go install
 
 ```bash
 go install github.com/upendra7470/clip/cmd/clip@latest
 ```
 
-This will install the binary to your `$GOPATH/bin` directory. Make sure this directory is in your PATH.
+This installs the binary to your `$GOPATH/bin` directory. Ensure this directory is in your PATH.
 
-### Manual installation
+### Manual Installation
 
 1. Clone the repository:
    ```bash
@@ -48,38 +30,68 @@ This will install the binary to your `$GOPATH/bin` directory. Make sure this dir
    cd clip
    ```
 
-2. Build the binary:
+2. Build and install:
    ```bash
    go build -o clip ./cmd/clip
+   sudo mv clip /usr/local/bin/clip
    ```
 
-3. Add to PATH:
-   ```bash
-   sudo cp clip /usr/local/bin/
-   ```
+## PATH Setup
 
-## Troubleshooting PATH Conflicts
+### Verify Installation
 
-If `which clip` still shows a Python package instead of the Go binary:
+```bash
+which clip
+```
+
+Should output: `/usr/local/bin/clip` or `~/go/bin/clip`
+
+### Add to PATH (if needed)
+
+If you installed to `~/go/bin` but it's not in your PATH:
+
+```bash
+# Add to your shell configuration (.bashrc, .zshrc, etc.)
+export PATH=$PATH:~/go/bin
+
+# Then reload
+source ~/.zshrc  # or source ~/.bashrc
+```
+
+### Resolve PATH Conflicts
+
+If `which clip` shows a Python package instead of the Go binary:
 
 1. Check your PATH order:
    ```bash
    echo $PATH
    ```
 
-2. Ensure `/usr/local/bin` comes before Python's installation directories.
+2. Ensure `/usr/local/bin` or `~/go/bin` comes before Python directories.
 
-3. Use the full path to the Go binary:
+3. Use the full path temporarily:
    ```bash
    /usr/local/bin/clip --version
    ```
 
 ## Uninstallation
 
-To remove the Clip binary:
+### Remove from /usr/local/bin
 
 ```bash
 sudo rm /usr/local/bin/clip
+```
+
+### Remove from Go bin directory
+
+```bash
+rm ~/go/bin/clip
+```
+
+### Using Make
+
+```bash
+make uninstall
 ```
 
 ## Usage Examples
@@ -111,10 +123,70 @@ clip --version
 
 ## Smart File Resolution
 
-Clip will automatically search for files in these locations:
+Clip automatically searches for files in these locations:
 1. Current directory
-2. ~/Downloads
-3. ~/Desktop
-4. ~/Documents
+2. Absolute path if provided
+3. ~/Downloads
+4. ~/Desktop
+5. ~/Documents
 
 If multiple files with the same name are found, Clip will prompt you to select one.
+
+## Troubleshooting
+
+### "command not found" after installation
+
+1. Verify the binary exists:
+   ```bash
+   ls /usr/local/bin/clip
+   ```
+
+2. Check your PATH:
+   ```bash
+   echo $PATH
+   ```
+
+3. Try running with full path:
+   ```bash
+   /usr/local/bin/clip --version
+   ```
+
+### Permission denied
+
+```bash
+sudo chmod +x /usr/local/bin/clip
+```
+
+### Python clip conflict persists
+
+1. Rename the Go binary:
+   ```bash
+   sudo mv /usr/local/bin/clip /usr/local/bin/clip-doc
+   ```
+
+2. Use the renamed command:
+   ```bash
+   clip-doc document.pdf
+   ```
+
+## Makefile Commands
+
+```bash
+make build      # Build the binary
+make install    # Install globally
+make uninstall  # Remove installation
+make clean      # Clean build artifacts
+make test       # Run tests
+make fmt        # Format code
+make help       # Show help
+```
+
+## Verification
+
+After installation, verify everything works:
+
+```bash
+clip --version      # Should show "Clip v1.0.0"
+clip --help         # Should show usage information
+clip sample.txt     # Should extract and copy text
+```

@@ -31,8 +31,8 @@ func TestParseMissingFile(t *testing.T) {
 		t.Fatal("Parse() expected error for missing file, got nil")
 	}
 
-	if !containsError(err.Error(), "failed to read JSON file") {
-		t.Errorf("Parse() error = %q, want to contain 'failed to read JSON file'", err.Error())
+	if !containsError(err.Error(), "Could not open JSON file") {
+		t.Errorf("Parse() error = %q, want to contain 'Could not open JSON file'", err.Error())
 	}
 }
 
@@ -365,8 +365,8 @@ func TestErrorWrapping(t *testing.T) {
 	}
 
 	// Check that error contains expected message
-	if !containsError(err.Error(), "failed to read JSON file") {
-		t.Errorf("Error message = %q, want to contain 'failed to read JSON file'", err.Error())
+	if !containsError(err.Error(), "Could not open JSON file") {
+		t.Errorf("Error message = %q, want to contain 'Could not open JSON file'", err.Error())
 	}
 }
 
