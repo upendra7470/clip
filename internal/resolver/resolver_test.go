@@ -205,10 +205,9 @@ func TestMultipleFilesFound(t *testing.T) {
 		}
 
 		// The error should indicate multiple files were found
-		// Since we can't provide interactive input in tests, the resolver should select the first file
-		expectedErrorPrefix := "selected:"
-		if !strings.HasPrefix(err.Error(), expectedErrorPrefix) {
-			t.Errorf("Expected error message to start with %q, got %q", expectedErrorPrefix, err.Error())
+		expectedErrorPrefix := "multiple files named"
+		if !strings.Contains(err.Error(), expectedErrorPrefix) {
+			t.Errorf("Expected error message to contain %q, got %q", expectedErrorPrefix, err.Error())
 		}
 	})
 }
@@ -234,4 +233,218 @@ func TestIsExactPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNormalizeFilename(t *testing.T) {
+	testCases := []struct {
+		input    string
+		expected string
+	}{
+		{"The Brain.docx", "thebrain.docx"},
+		{"the brain.docx", "thebrain.docx"},
+		{"THEBRAIN.DOCX", "thebrain.docx"},
+		{"jntuh.pdf", "jntuh.pdf"},
+		{"file name with spaces.txt", "filenamewithspaces.txt"},
+		{"Another File.PDF", "anotherfile.pdf"},
+		{"test", "test"},
+		{"", ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.input, func(t *testing.T) {
+			result := normalizeFilename(tc.input)
+			if result != tc.expected {
+				t.Errorf("normalizeFilename(%q) = %q, want %q", tc.input, result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestSmartFilenameResolution(t *testing.T) {
+	t.Run("case-insensitive matching", func(t *testing.T) {
+		// Create a test file with mixed case
+		tmpFile, err := os.CreateTemp(".", "TestFile*.txt")
+		if err != nil {
+			t.Fatalf("Failed to create temp file: %v", err)
+		}
+		defer os.Remove(tmpFile.Name())
+
+		// Rename to have specific case
+		actualName := "TheBrain.docx"
+		err = os.Rename(tmpFile.Name(), filepath.Join(".", actualName))
+		if err != nil {
+			t.Fatalf("Failed to rename temp file: %v", err)
+		}
+		defer os.Remove(actualName)
+
+		resolver := New()
+		ctx := context.Background()
+
+		// Test different case variations
+		testCases := []string{
+			"thebrain.docx",
+			"THEBRAIN.DOCX",
+			"the brain.docx",
+			"The Brain.docx",
+		}
+
+		for _, query := range testCases {
+			t.Run(query, func(t *testing.T) {
+				resolvedPath, err := resolver.Resolve(ctx, query)
+				if err != nil {
+					t.Errorf("Failed to resolve %q: %v", query, err)
+					return
+				}
+
+				// Check that the resolved file exists and is the one we created
+				// Since exact match takes precedence, it should find "TheBrain.docx"
+				// But if smart matching is used, it should still resolve to our file
+				resolvedFilename := filepath.Base(resolvedPath)
+				normalizedResolved := normalizeFilename(resolvedFilename)
+				normalizedExpected := normalizeFilename(actualName)
+
+				if normalizedResolved != normalizedExpected {
+					t.Errorf("Expected normalized filename %q, got %q (original: %q)", normalizedExpected, normalizedResolved, resolvedFilename)
+				}
+			})
+		}
+	})
+
+	t.Run("space-insensitive matching", func(t *testing.T) {
+		// Create a test file with spaces
+		tmpFile, err := os.CreateTemp(".", "Test File*.txt")
+		if err != nil {
+			t.Fatalf("Failed to create temp file: %v", err)
+		}
+		defer os.Remove(tmpFile.Name())
+
+		// Rename to have specific name with spaces
+		actualName := "The Brain.docx"
+		err = os.Rename(tmpFile.Name(), filepath.Join(".", actualName))
+		if err != nil {
+			t.Fatalf("Failed to rename temp file: %v", err)
+		}
+		defer os.Remove(actualName)
+
+		resolver := New()
+		ctx := context.Background()
+
+		// Test query without spaces
+		query := "thebrain.docx"
+		resolvedPath, err := resolver.Resolve(ctx, query)
+		if err != nil {
+			t.Errorf("Failed to resolve %q: %v", query, err)
+			return
+		}
+
+		// Check that the resolved file exists and is the one we created
+		// Since exact match takes precedence, it should find "The Brain.docx"
+		// But if smart matching is used, it should still resolve to our file
+		resolvedFilename := filepath.Base(resolvedPath)
+		normalizedResolved := normalizeFilename(resolvedFilename)
+		normalizedExpected := normalizeFilename(actualName)
+
+		if normalizedResolved != normalizedExpected {
+			t.Errorf("Expected normalized filename %q, got %q (original: %q)", normalizedExpected, normalizedResolved, resolvedFilename)
+		}
+	})
+
+	t.Run("exact match takes precedence", func(t *testing.T) {
+		// Create two files: one exact match, one smart match
+		exactFile, err := os.CreateTemp(".", "exact*.txt")
+		if err != nil {
+			t.Fatalf("Failed to create exact file: %v", err)
+		}
+		defer os.Remove(exactFile.Name())
+
+		smartFile, err := os.CreateTemp(".", "smart*.txt")
+		if err != nil {
+			t.Fatalf("Failed to create smart file: %v", err)
+		}
+		defer os.Remove(smartFile.Name())
+
+		// Rename files
+		exactName := "thebrain.docx"
+		smartName := "The Brain.docx"
+		err = os.Rename(exactFile.Name(), filepath.Join(".", exactName))
+		if err != nil {
+			t.Fatalf("Failed to rename exact file: %v", err)
+		}
+		defer os.Remove(exactName)
+
+		err = os.Rename(smartFile.Name(), filepath.Join(".", smartName))
+		if err != nil {
+			t.Fatalf("Failed to rename smart file: %v", err)
+		}
+		defer os.Remove(smartName)
+
+		resolver := New()
+		ctx := context.Background()
+
+		// When querying with exact name, should get exact match
+		resolvedPath, err := resolver.Resolve(ctx, exactName)
+		if err != nil {
+			t.Errorf("Failed to resolve exact match: %v", err)
+			return
+		}
+
+		expectedFilename := filepath.Base(resolvedPath)
+		if expectedFilename != exactName {
+			t.Errorf("Expected exact match filename %q, got %q", exactName, expectedFilename)
+		}
+	})
+}
+
+func TestMultipleFilesSmartMatching(t *testing.T) {
+	t.Run("multiple files with smart matching", func(t *testing.T) {
+		// Create temporary files in different locations that would match the same smart query
+		tmpFile1, err := os.CreateTemp(".", "The Brain*.docx")
+		if err != nil {
+			t.Fatalf("Failed to create temp file 1: %v", err)
+		}
+		defer os.Remove(tmpFile1.Name())
+
+		// Create a Downloads directory for testing
+		downloadsDir := filepath.Join(".", "test_downloads")
+		err = os.MkdirAll(downloadsDir, 0755)
+		if err != nil {
+			t.Fatalf("Failed to create test downloads dir: %v", err)
+		}
+		defer os.RemoveAll(downloadsDir)
+
+		tmpFile2, err := os.CreateTemp(downloadsDir, "TheBrain*.docx")
+		if err != nil {
+			t.Fatalf("Failed to create temp file 2: %v", err)
+		}
+		defer os.Remove(tmpFile2.Name())
+
+		// Rename both files to have names that would smart-match the same query
+		filename1 := "The Brain.docx"
+		filename2 := "The Brain.docx" // Same name to trigger multiple exact matches
+		err = os.Rename(tmpFile1.Name(), filepath.Join(".", filename1))
+		if err != nil {
+			t.Fatalf("Failed to rename temp file 1: %v", err)
+		}
+
+		err = os.Rename(tmpFile2.Name(), filepath.Join(downloadsDir, filename2))
+		if err != nil {
+			t.Fatalf("Failed to rename temp file 2: %v", err)
+		}
+
+		resolver := New()
+		ctx := context.Background()
+
+		// Query with exact match that would find both files
+		query := "The Brain.docx"
+		_, err = resolver.Resolve(ctx, query)
+		if err == nil {
+			t.Errorf("Expected error for multiple files, got nil")
+		}
+
+		// The error should indicate multiple files were found
+		expectedErrorPrefix := "multiple files named"
+		if !strings.Contains(err.Error(), expectedErrorPrefix) {
+			t.Errorf("Expected error message to contain %q, got %q", expectedErrorPrefix, err.Error())
+		}
+	})
 }

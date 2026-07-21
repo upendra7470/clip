@@ -10,6 +10,7 @@ import (
 
 	"github.com/upendra7470/clip/internal/application"
 	"github.com/upendra7470/clip/internal/clipboard"
+	"github.com/upendra7470/clip/internal/detect"
 	"github.com/upendra7470/clip/internal/parser"
 	"github.com/upendra7470/clip/internal/registry"
 	"github.com/upendra7470/clip/internal/resolver"
@@ -174,25 +175,24 @@ func main() {
 		return
 	}
 
-	// Get the file path (first non-flag argument)
-	filePath := getFilePath()
+	// Get the file path and optional range argument
+	filePath, rangeArg := getFilePathAndRange()
 	if filePath == "" {
 		fmt.Fprintf(os.Stderr, "No file specified\n")
 		showHelp()
 		os.Exit(1)
 	}
 
-	// Get optional page range argument (second non-flag argument)
-	var pageRange *parser.PageRange
-	pageRangeArg := getPageRangeArg()
-	if pageRangeArg != "" {
-		parsedRange, err := parser.ParsePageRange(pageRangeArg)
+	// Parse optional range argument
+	var rangeObj *parser.Range
+	if rangeArg != "" {
+		parsedRange, err := parser.ParseRange(rangeArg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			showHelp()
 			os.Exit(1)
 		}
-		pageRange = &parsedRange
+		rangeObj = &parsedRange
 	}
 
 	// Create context with timeout to prevent hanging
@@ -213,10 +213,24 @@ func main() {
 		}
 	}
 
+	// Detect file type to determine range unit for success message
+	fileType, err := detect.Type(resolvedPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Lookup parser to get range unit
+	parserObj, err := reg.Lookup(fileType)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Run the extraction pipeline
 	var extractErr error
-	if pageRange != nil {
-		extractErr = app.ExtractWithRange(ctx, resolvedPath, pageRange)
+	if rangeObj != nil {
+		extractErr = app.ExtractWithRange(ctx, resolvedPath, rangeObj)
 	} else {
 		extractErr = app.Extract(ctx, resolvedPath)
 	}
@@ -227,8 +241,14 @@ func main() {
 
 	// Success
 	fmt.Printf("✓ Found: %s\n", resolvedPath)
-	if pageRange != nil {
-		fmt.Printf("✓ Extracted pages %d-%d successfully\n", pageRange.Start, pageRange.End)
+	if rangeObj != nil {
+		// Determine the correct range unit based on file type
+		rangeUnit := "pages" // default
+		if rangeParser, ok := parserObj.(parser.RangeParser); ok {
+			rangeUnit = rangeParser.GetRangeUnit()
+		}
+
+		fmt.Printf("✓ Extracted %s %d-%d successfully\n", rangeUnit, rangeObj.Start, rangeObj.End)
 	} else {
 		fmt.Println("✓ Extracted text successfully")
 	}
@@ -247,32 +267,26 @@ func showHelp() {
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("    clip <filename>")
-	fmt.Println("    clip <filename> <page>")
-	fmt.Println("    clip <filename> <start>-<end>")
+	fmt.Println("    clip <filename> <range>")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("    clip report.pdf")
 	fmt.Println("    clip report.pdf 5")
 	fmt.Println("    clip report.pdf 5-10")
+	fmt.Println("    clip \"The Brain.docx\"")
+	fmt.Println("    clip \"The Brain.docx\" 5-10")
+	fmt.Println("    clip presentation.pptx 5-10")
+	fmt.Println("    clip file.txt 5-10")
 	fmt.Println()
-	fmt.Println("Supported formats:")
-	fmt.Println("  PDF (with page range support)")
-	fmt.Println("  DOCX")
-	fmt.Println("  TXT")
-	fmt.Println("  Markdown")
-	fmt.Println("  CSV")
-	fmt.Println("  XLSX")
-	fmt.Println("  JSON")
-	fmt.Println("  XML")
-	fmt.Println("  HTML")
-	fmt.Println("  YAML")
-	fmt.Println("  RTF")
-	fmt.Println("  ODT")
-	fmt.Println("  ODS")
-	fmt.Println("  PPTX")
-	fmt.Println("  PPT")
+	fmt.Println("Range units by file type:")
+	fmt.Println("  PDF    -> pages")
+	fmt.Println("  DOCX   -> paragraphs")
+	fmt.Println("  PPTX   -> slides")
+	fmt.Println("  TXT    -> lines")
+	fmt.Println("  Markdown -> lines")
 	fmt.Println()
-	fmt.Println("Note: Page ranges are currently supported for PDF documents only.")
+	fmt.Println("Note: Remember to quote filenames containing spaces.")
+	fmt.Println("      Example: clip \"The Brain.docx\" 5-10")
 }
 
 // getFilePath extracts the file path from command line arguments.
@@ -290,9 +304,10 @@ func getFilePath() string {
 	return ""
 }
 
-// getPageRangeArg extracts the page range argument from command line arguments.
-// Returns the second non-flag argument if it exists and looks like a page range.
-func getPageRangeArg() string {
+// getFilePathAndRange extracts the file path and optional range argument from command line arguments.
+// This function handles quoted filenames with spaces and intelligently distinguishes between
+// filename words and range arguments.
+func getFilePathAndRange() (string, string) {
 	nonFlagArgs := []string{}
 	for _, arg := range os.Args[1:] {
 		if arg == "--help" || arg == "-h" || arg == "--version" {
@@ -304,21 +319,48 @@ func getPageRangeArg() string {
 		nonFlagArgs = append(nonFlagArgs, arg)
 	}
 
-	// If there are at least 2 non-flag arguments, the second one might be a page range
-	if len(nonFlagArgs) >= 2 {
-		// Check if the second argument looks like a page range (contains digits and possibly a dash)
-		secondArg := nonFlagArgs[1]
-		hasDigits := false
-		for _, c := range secondArg {
-			if c >= '0' && c <= '9' {
-				hasDigits = true
-			}
-		}
-		// If it has digits, treat it as a potential page range
-		if hasDigits {
-			return secondArg
+	// If no arguments, return empty
+	if len(nonFlagArgs) == 0 {
+		return "", ""
+	}
+
+	// If only one argument, it's the filename
+	if len(nonFlagArgs) == 1 {
+		return nonFlagArgs[0], ""
+	}
+
+	// If multiple arguments, we need to determine if the last argument is a range
+	// A range argument should contain digits and optionally a dash
+	lastArg := nonFlagArgs[len(nonFlagArgs)-1]
+	if isRangeArgument(lastArg) {
+		// Last argument is a range, join the rest as filename
+		filename := strings.Join(nonFlagArgs[:len(nonFlagArgs)-1], " ")
+		return filename, lastArg
+	}
+
+	// If last argument is not a range, treat all arguments as filename
+	filename := strings.Join(nonFlagArgs, " ")
+	return filename, ""
+}
+
+// isRangeArgument checks if an argument looks like a range specification.
+// A valid range contains digits and optionally a dash (e.g., "5", "5-10").
+func isRangeArgument(arg string) bool {
+	// Remove any quotes from the argument
+	arg = strings.Trim(arg, `"'`)
+
+	// Check if it contains only digits and optionally a dash
+	hasDigits := false
+	hasOtherChars := false
+
+	for _, c := range arg {
+		if c >= '0' && c <= '9' {
+			hasDigits = true
+		} else if c != '-' {
+			hasOtherChars = true
 		}
 	}
 
-	return ""
+	// Valid range: has digits, may have dashes, no other characters
+	return hasDigits && !hasOtherChars
 }

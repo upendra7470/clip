@@ -16,16 +16,20 @@ type Parser interface {
 }
 
 // RangeParser is an optional interface that parsers can implement
-// to support page range extraction.
+// to support range extraction for their specific document type.
 type RangeParser interface {
 	Parser
 
-	// ParseRange extracts text from a specific page range in a document.
+	// ParseRange extracts text from a specific range in a document.
 	// The context allows for cancellation and timeouts.
 	// The ParseRequest contains the file path and any selection criteria.
-	// start and end are 1-based page numbers.
+	// start and end are 1-based unit numbers (pages, slides, paragraphs, lines, rows, etc.).
 	// Returns the extracted text in ParseResult or an error.
 	ParseRange(ctx context.Context, req ParseRequest, start, end int) (ParseResult, error)
+
+	// GetRangeUnit returns the unit type that this parser uses for ranges.
+	// Returns a human-readable string like "pages", "slides", "paragraphs", "lines", "rows".
+	GetRangeUnit() string
 }
 
 // ParseRequest contains the input parameters for parsing a document.

@@ -81,7 +81,7 @@ func (r *Resolver) resolveFilename(ctx context.Context, filename string) (string
 
 	var foundFiles []string
 
-	// Search each location
+	// First, try exact match (case-sensitive)
 	for _, location := range searchLocations {
 		select {
 		case <-ctx.Done():
@@ -90,6 +90,42 @@ func (r *Resolver) resolveFilename(ctx context.Context, filename string) (string
 			fullPath := filepath.Join(location, filename)
 			if _, err := os.Stat(fullPath); err == nil {
 				foundFiles = append(foundFiles, fullPath)
+			}
+		}
+	}
+
+	// If no exact match found, try smart matching
+	if len(foundFiles) == 0 {
+		// Normalize the search filename for smart matching
+		normalizedQuery := normalizeFilename(filename)
+
+		// Search each location with smart matching
+		for _, location := range searchLocations {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			default:
+				// Read directory contents
+				files, err := os.ReadDir(location)
+				if err != nil {
+					continue // Skip directories that can't be read
+				}
+
+				// Check each file in the directory
+				for _, file := range files {
+					if file.IsDir() {
+						continue
+					}
+
+					fileName := file.Name()
+					normalizedFileName := normalizeFilename(fileName)
+
+					// Try to match using normalized names
+					if normalizedFileName == normalizedQuery {
+						fullPath := filepath.Join(location, fileName)
+						foundFiles = append(foundFiles, fullPath)
+					}
+				}
 			}
 		}
 	}
@@ -115,35 +151,41 @@ func (r *Resolver) resolveFilename(ctx context.Context, filename string) (string
 	}
 }
 
+// normalizeFilename normalizes a filename for smart matching.
+// It removes spaces and converts to lowercase to enable case-insensitive
+// and space-insensitive matching.
+func normalizeFilename(filename string) string {
+	// Remove file extension first to handle it separately
+	ext := filepath.Ext(filename)
+	baseName := filename[:len(filename)-len(ext)]
+
+	// Normalize base name: remove spaces and convert to lowercase
+	normalizedBase := strings.ToLower(strings.ReplaceAll(baseName, " ", ""))
+
+	// Keep the extension as-is but lowercase
+	normalizedExt := strings.ToLower(ext)
+
+	return normalizedBase + normalizedExt
+}
+
 // handleMultipleFiles handles the case where multiple files with the same name are found.
 func (r *Resolver) handleMultipleFiles(filename string, foundFiles []string) error {
-	fmt.Printf("Multiple files named \"%s\" found:\n", filename)
+	// Build error message listing all matching files
+	var fileList strings.Builder
+	fileList.WriteString("multiple files named \"")
+	fileList.WriteString(filename)
+	fileList.WriteString("\" found:\n")
+
 	for i, file := range foundFiles {
 		// Make paths relative to home directory for cleaner display
 		relPath, err := filepath.Rel(getHomeDir(), file)
 		if err != nil || strings.HasPrefix(relPath, "..") {
 			relPath = file
 		}
-		fmt.Printf("%d. %s\n", i+1, relPath)
+		fileList.WriteString(fmt.Sprintf("%d. %s\n", i+1, relPath))
 	}
 
-	fmt.Print("Please select a file by number: ")
-	var choice int
-	_, err := fmt.Scanln(&choice)
-	if err != nil {
-		// If there's no user input (like in tests), return the first file
-		if err.Error() == "EOF" {
-			return fmt.Errorf("selected:%s", foundFiles[0])
-		}
-		return fmt.Errorf("invalid input: %w", err)
-	}
-
-	if choice < 1 || choice > len(foundFiles) {
-		return fmt.Errorf("invalid choice: %d", choice)
-	}
-
-	// Return the selected file path
-	return fmt.Errorf("selected:%s", foundFiles[choice-1])
+	return fmt.Errorf("%s", fileList.String())
 }
 
 // getHomeDir returns the user's home directory.

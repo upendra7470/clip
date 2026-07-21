@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -10,7 +11,7 @@ import (
 	"github.com/upendra7470/clip/internal/parser"
 )
 
-// Parser implements the parser.Parser interface for Markdown files.
+// Parser implements the parser.Parser and parser.RangeParser interfaces for Markdown files.
 type Parser struct{}
 
 // Parse reads a Markdown file and returns extracted readable text.
@@ -42,6 +43,65 @@ func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.Par
 // FileType returns the file type this parser handles.
 func (p *Parser) FileType() filetype.FileType {
 	return filetype.FileTypeMarkdown
+}
+
+// GetRangeUnit returns the unit type that this parser uses for ranges.
+func (p *Parser) GetRangeUnit() string {
+	return "lines"
+}
+
+// ParseRange extracts text from a specific line range in a Markdown file.
+func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
+	// Validate line range
+	if start < 1 || end < 1 {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("line numbers must start from 1, got %d-%d", start, end), nil)
+	}
+	if end < start {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid line range: start line must not be greater than end line (got %d-%d)", start, end), nil)
+	}
+
+	// Read the file content
+	content, err := os.ReadFile(req.File)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return parser.ParseResult{}, wrapError("Could not open Markdown file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		}
+		if os.IsPermission(err) {
+			return parser.ParseResult{}, wrapError("Could not open Markdown file:\n"+req.File+"\n\nReason:\npermission denied", err)
+		}
+		return parser.ParseResult{}, wrapError("Could not open Markdown file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+	}
+
+	// Convert to string
+	text := string(content)
+
+	// Split into lines
+	lines := strings.Split(text, "\n")
+
+	// Validate range against actual line count
+	if start > len(lines) || end > len(lines) {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested line range exceeds file line count (file has %d lines, requested %d-%d)", len(lines), start, end), nil)
+	}
+
+	// Extract only the requested line range
+	var result strings.Builder
+	for i := start - 1; i < end && i < len(lines); i++ {
+		if i > start-1 {
+			result.WriteString("\n")
+		}
+		result.WriteString(lines[i])
+	}
+
+	// Process Markdown syntax for the extracted range
+	processed := processMarkdown(result.String())
+
+	if processed == "" {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("no text content found in lines %d-%d", start, end), nil)
+	}
+
+	return parser.ParseResult{
+		Text: processed,
+	}, nil
 }
 
 // processMarkdown processes basic Markdown syntax to extract readable text.

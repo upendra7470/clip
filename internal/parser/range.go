@@ -6,18 +6,19 @@ import (
 	"strings"
 )
 
-// PageRange represents a range of pages to extract from a document.
-type PageRange struct {
+// Range represents a range of units to extract from a document.
+// This generic range can represent pages, slides, paragraphs, lines, rows, etc.
+type Range struct {
 	Start int
 	End   int
 }
 
-// ParsePageRange parses a page range string and returns a PageRange.
+// ParseRange parses a range string and returns a Range.
 // Supported formats:
-// - "5" (single page)
-// - "5-10" (range of pages)
+// - "5" (single unit)
+// - "5-10" (range of units)
 // Returns error if the format is invalid.
-func ParsePageRange(input string) (PageRange, error) {
+func ParseRange(input string) (Range, error) {
 	// Trim whitespace
 	input = strings.TrimSpace(input)
 
@@ -25,18 +26,18 @@ func ParsePageRange(input string) (PageRange, error) {
 	if !strings.Contains(input, "-") {
 		pageNum, err := strconv.Atoi(input)
 		if err != nil {
-			return PageRange{}, fmt.Errorf("invalid page range: expected format like 5 or 5-10, got %q", input)
+			return Range{}, fmt.Errorf("invalid range: expected format like 5 or 5-10, got %q", input)
 		}
 		if pageNum < 1 {
-			return PageRange{}, fmt.Errorf("page numbers must start from 1, got %d", pageNum)
+			return Range{}, fmt.Errorf("range values must start from 1, got %d", pageNum)
 		}
-		return PageRange{Start: pageNum, End: pageNum}, nil
+		return Range{Start: pageNum, End: pageNum}, nil
 	}
 
 	// Check for range format
 	parts := strings.Split(input, "-")
 	if len(parts) != 2 {
-		return PageRange{}, fmt.Errorf("invalid page range: expected format like 5-10, got %q", input)
+		return Range{}, fmt.Errorf("invalid range: expected format like 5-10, got %q", input)
 	}
 
 	startStr := strings.TrimSpace(parts[0])
@@ -45,39 +46,39 @@ func ParsePageRange(input string) (PageRange, error) {
 	// Parse start page
 	start, err := strconv.Atoi(startStr)
 	if err != nil {
-		return PageRange{}, fmt.Errorf("invalid page range: start page must be a number, got %q", startStr)
+		return Range{}, fmt.Errorf("invalid range: start value must be a number, got %q", startStr)
 	}
 	if start < 1 {
-		return PageRange{}, fmt.Errorf("page numbers must start from 1, got %d", start)
+		return Range{}, fmt.Errorf("range values must start from 1, got %d", start)
 	}
 
 	// Parse end page
 	end, err := strconv.Atoi(endStr)
 	if err != nil {
-		return PageRange{}, fmt.Errorf("invalid page range: end page must be a number, got %q", endStr)
+		return Range{}, fmt.Errorf("invalid range: end value must be a number, got %q", endStr)
 	}
 	if end < 1 {
-		return PageRange{}, fmt.Errorf("page numbers must start from 1, got %d", end)
+		return Range{}, fmt.Errorf("range values must start from 1, got %d", end)
 	}
 
 	// Validate range
 	if end < start {
-		return PageRange{}, fmt.Errorf("invalid page range: start page must not be greater than end page (got %d-%d)", start, end)
+		return Range{}, fmt.Errorf("invalid range: start value must not be greater than end value (got %d-%d)", start, end)
 	}
 
-	return PageRange{Start: start, End: end}, nil
+	return Range{Start: start, End: end}, nil
 }
 
-// ValidatePageRangeAgainstTotal validates that a page range is within the bounds of a document.
-func ValidatePageRangeAgainstTotal(rangeObj PageRange, totalPages int) error {
+// ValidateRangeAgainstTotal validates that a range is within the bounds of a document.
+func ValidateRangeAgainstTotal(rangeObj Range, totalUnits int) error {
 	if rangeObj.Start < 1 || rangeObj.End < 1 {
-		return fmt.Errorf("page numbers must start from 1")
+		return fmt.Errorf("range values must start from 1")
 	}
-	if rangeObj.Start > totalPages || rangeObj.End > totalPages {
-		return fmt.Errorf("requested page range exceeds document page count (document has %d pages, requested %d-%d)", totalPages, rangeObj.Start, rangeObj.End)
+	if rangeObj.Start > totalUnits || rangeObj.End > totalUnits {
+		return fmt.Errorf("requested range exceeds document unit count (document has %d units, requested %d-%d)", totalUnits, rangeObj.Start, rangeObj.End)
 	}
 	if rangeObj.End < rangeObj.Start {
-		return fmt.Errorf("invalid page range: start page must not be greater than end page")
+		return fmt.Errorf("invalid range: start value must not be greater than end value")
 	}
 	return nil
 }

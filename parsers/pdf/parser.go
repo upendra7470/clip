@@ -147,6 +147,11 @@ func (p *Parser) FileType() filetype.FileType {
 	return filetype.FileTypePDF
 }
 
+// GetRangeUnit returns the unit type that this parser uses for ranges.
+func (p *Parser) GetRangeUnit() string {
+	return "pages"
+}
+
 // wrapError wraps an error with additional context.
 func wrapError(message string, err error) error {
 	if err == nil {
