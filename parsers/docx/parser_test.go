@@ -60,6 +60,66 @@ func TestParseRange(t *testing.T) {
 	assert.NotContains(t, result.Text, "End of document")
 }
 
+func TestParseRangeWithRealisticDOCX(t *testing.T) {
+	// Test with the realistic DOCX fixture
+	docxParser := &Parser{}
+	req := parser.ParseRequest{
+		File: "../../test_realistic.docx",
+	}
+
+	// Test full document extraction
+	result, err := docxParser.Parse(context.Background(), req)
+	assert.NoError(t, err)
+
+	// Verify full extraction returns actual content
+	assert.Contains(t, result.Text, "This is the first paragraph of the document")
+	assert.Contains(t, result.Text, "This is the second paragraph")
+	assert.Contains(t, result.Text, "Third paragraph here")
+	assert.Contains(t, result.Text, "This is the first paragraph after the table")
+	assert.Contains(t, result.Text, "Second paragraph after the table")
+	assert.Contains(t, result.Text, "Final paragraph of the document")
+
+	// Verify table structure is preserved
+	assert.Contains(t, result.Text, "| Name | Age | Occupation |")
+	assert.Contains(t, result.Text, "| --- | --- | --- |")
+	assert.Contains(t, result.Text, "| John Doe | 30 | Software Engineer |")
+	assert.Contains(t, result.Text, "| Jane Smith | 25 | Data Scientist |")
+
+	// Test range 1-3 extraction
+	result, err = docxParser.ParseRange(context.Background(), req, 1, 3)
+	assert.NoError(t, err)
+
+	// Verify range output contains no artificial warning
+	assert.NotContains(t, result.Text, "Warning:")
+
+	// Verify range output contains no artificial "Paragraph N:" prefixes
+	assert.NotContains(t, result.Text, "Paragraph 1:")
+	assert.NotContains(t, result.Text, "Paragraph 2:")
+	assert.NotContains(t, result.Text, "Paragraph 3:")
+
+	// Verify range 1-3 returns actual content
+	assert.Contains(t, result.Text, "This is the first paragraph of the document")
+	assert.Contains(t, result.Text, "This is the second paragraph")
+	assert.Contains(t, result.Text, "Third paragraph here")
+
+	// Test range that includes the table
+	result, err = docxParser.ParseRange(context.Background(), req, 3, 6)
+	assert.NoError(t, err)
+
+	// Verify table remains structured
+	assert.Contains(t, result.Text, "Name")
+	assert.Contains(t, result.Text, "Age")
+	assert.Contains(t, result.Text, "Occupation")
+
+	// Test range outside document length
+	result, err = docxParser.ParseRange(context.Background(), req, 16, 20)
+	assert.Error(t, err)
+
+	// Verify error handling for out-of-range requests
+	assert.Contains(t, err.Error(), "requested paragraph range exceeds document paragraph count")
+	assert.NotContains(t, result.Text, "Warning:")
+}
+
 func TestParseRangeNoAdjustmentNoWarning(t *testing.T) {
 	// Test that no warning is generated when requested range fits exactly
 	tempDir := t.TempDir()
