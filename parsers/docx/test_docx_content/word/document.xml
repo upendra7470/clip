@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+	<w:body>
+		<w:p>
+			<w:r>
+				<w:t>Paragraph 1: Hello World</w:t>
+			</w:r>
+		</w:p>
+		<w:p>
+			<w:r>
+				<w:t>Paragraph 2: This is a test</w:t>
+			</w:r>
+		</w:p>
+		<w:p>
+			<w:r>
+				<w:t>Paragraph 3: For range extraction</w:t>
+			</w:r>
+		</w:p>
+		<w:p>
+			<w:r>
+				<w:t>Paragraph 4: With multiple paragraphs</w:t>
+			</w:r>
+		</w:p>
+		<w:p>
+			<w:r>
+				<w:t>Paragraph 5: End of document</w:t>
+			</w:r>
+		</w:p>
+	</w:body>
+</w:document>

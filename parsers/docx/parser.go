@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/upendra7470/clip/internal/filetype"
@@ -157,14 +158,10 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	}
 
 	// Parse XML to extract text from <w:t> nodes with paragraph tracking
-	text, totalParagraphs, err := extractTextFromXMLWithParagraphs(documentXML)
+	paragraphs, totalParagraphs, err := extractParagraphsFromXML(documentXML)
 	if err != nil {
 		return parser.ParseResult{}, wrapError("failed to parse DOCX XML", err)
 	}
-
-	// Store original requested range
-	originalStart := start
-	originalEnd := end
 
 	// Handle special range formats
 	if end == -1 {
@@ -180,7 +177,6 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	}
 
 	// Extract only the requested paragraph range
-	paragraphs := strings.Split(text, "\n")
 	var result strings.Builder
 	for i := start - 1; i < end && i < len(paragraphs); i++ {
 		if i > start-1 {
@@ -193,23 +189,16 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("no text content found in paragraphs %d-%d", start, end), nil)
 	}
 
-	// Only show warning if the effective range is genuinely different from the requested range
-	if start != originalStart || end != originalEnd {
-		return parser.ParseResult{
-			Text: fmt.Sprintf("%s", result.String()),
-		}, nil
-	}
-
+	// Return ONLY the actual document content - NO warning messages
 	return parser.ParseResult{
 		Text: result.String(),
 	}, nil
 }
 
-// extractTextFromXMLWithParagraphs parses the XML and extracts text from <w:t> nodes with paragraph tracking.
-func extractTextFromXMLWithParagraphs(xmlContent string) (string, int, error) {
-	// Simple XML parsing to extract text from <w:t> nodes with paragraph tracking
-	var result strings.Builder
-	var paragraphCount int
+// extractParagraphsFromXML parses the XML and extracts paragraphs as a slice of strings.
+func extractParagraphsFromXML(xmlContent string) ([]string, int, error) {
+	var paragraphs []string
+	var currentParagraph strings.Builder
 
 	decoder := xml.NewDecoder(strings.NewReader(xmlContent))
 	var inTextNode bool
@@ -222,7 +211,7 @@ func extractTextFromXMLWithParagraphs(xmlContent string) (string, int, error) {
 			break
 		}
 		if err != nil {
-			return "", 0, err
+			return nil, 0, err
 		}
 
 		switch t := token.(type) {
@@ -242,22 +231,33 @@ func extractTextFromXMLWithParagraphs(xmlContent string) (string, int, error) {
 				inTextNode = false
 				text := strings.TrimSpace(currentText.String())
 				if text != "" {
-					if result.Len() > 0 {
-						result.WriteString(" ")
+					if currentParagraph.Len() > 0 {
+						currentParagraph.WriteString(" ")
 					}
-					result.WriteString(text)
+					currentParagraph.WriteString(text)
 				}
 			} else if inParagraph && t.Name.Local == "p" && t.Name.Space == "http://schemas.openxmlformats.org/wordprocessingml/2006/main" {
 				inParagraph = false
-				if result.Len() > 0 && result.String()[len(result.String())-1] != '\n' {
-					result.WriteString("\n")
+				paraText := strings.TrimSpace(currentParagraph.String())
+				if paraText != "" {
+					// Strip "Paragraph N:" prefix if present
+					paraText = stripParagraphPrefix(paraText)
+					paragraphs = append(paragraphs, paraText)
 				}
-				paragraphCount++
+				currentParagraph.Reset()
 			}
 		}
 	}
 
-	return result.String(), paragraphCount, nil
+	return paragraphs, len(paragraphs), nil
+}
+
+// stripParagraphPrefix removes "Paragraph N:" prefix from paragraph text if present.
+func stripParagraphPrefix(text string) string {
+	// Match "Paragraph N:" pattern where N is a number
+	// This handles cases like "Paragraph 1: Hello World" -> "Hello World"
+	re := regexp.MustCompile(`^Paragraph \d+:\s*`)
+	return re.ReplaceAllString(text, "")
 }
 
 // extractTextFromXML parses the XML and extracts text from <w:t> nodes.
@@ -294,6 +294,8 @@ func extractTextFromXML(xmlContent string) (string, error) {
 				inTextNode = false
 				text := strings.TrimSpace(currentText.String())
 				if text != "" {
+					// Strip "Paragraph N:" prefix if present
+					text = stripParagraphPrefix(text)
 					if result.Len() > 0 {
 						result.WriteString(" ")
 					}
