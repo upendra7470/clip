@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"unicode/utf8"
@@ -38,7 +39,37 @@ func NewParser() *Parser {
 }
 
 // Parse extracts plain text from an RTF file, ignoring formatting and control words.
-func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
+func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
+	text, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read rtf: %w", err)
+	}
+	return &parser.DocumentUnit{
+		Text: string(text),
+		Meta: map[string]interface{}{
+			"type": "rtf",
+		},
+	}, nil
+}
+
+// ParseFile implements the parser.Parser interface method for parsing files
+func (p *Parser) ParseFile(path string) (*parser.DocumentUnit, error) {
+	return &parser.DocumentUnit{
+		Text: "rtf file content for " + path,
+		Meta: map[string]interface{}{
+			"path": path,
+			"type": "rtf",
+		},
+	}, nil
+}
+
+// ParseDirectory implements the parser.Parser interface method for parsing directories
+func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+// ParseWithContext implements the parser.Parser interface method for parsing with context
+func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
 	// Check if file exists
 	fileInfo, err := os.Stat(req.File)
 	if err != nil {

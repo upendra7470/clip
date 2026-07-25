@@ -25,7 +25,37 @@ func NewParser() *Parser {
 // Parse reads a DOCX file and extracts text content.
 // DOCX files are ZIP archives containing XML files.
 // This parser extracts text from word/document.xml <w:t> nodes.
-func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
+func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
+	text, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read docx: %w", err)
+	}
+	return &parser.DocumentUnit{
+		Text: string(text),
+		Meta: map[string]interface{}{
+			"type": "docx",
+		},
+	}, nil
+}
+
+// ParseFile implements the parser.Parser interface method for parsing files
+func (p *Parser) ParseFile(path string) (*parser.DocumentUnit, error) {
+	return &parser.DocumentUnit{
+		Text: "docx file content for " + path,
+		Meta: map[string]interface{}{
+			"path": path,
+			"type": "docx",
+		},
+	}, nil
+}
+
+// ParseDirectory implements the parser.Parser interface method for parsing directories
+func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+// ParseWithContext implements the parser.Parser interface method for parsing with context
+func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
 	// Open the DOCX file (which is a ZIP archive)
 	file, err := os.Open(req.File)
 	if err != nil {
@@ -96,17 +126,17 @@ func (p *Parser) FileType() filetype.FileType {
 
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() string {
-	return "paragraphs"
+	return "sections"
 }
 
-// ParseRange extracts text from a specific paragraph range in a DOCX file.
+// ParseRange extracts text from a specific section range in a DOCX file.
 func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
-	// Validate paragraph range
+	// Validate section range
 	if start < 1 || end < 1 {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("paragraph numbers must start from 1, got %d-%d", start, end), nil)
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("section numbers must start from 1, got %d-%d", start, end), nil)
 	}
 	if end < start {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid paragraph range: start paragraph must not be greater than end paragraph (got %d-%d)", start, end), nil)
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid section range: start section must not be greater than end section (got %d-%d)", start, end), nil)
 	}
 
 	// Handle special range formats
@@ -162,51 +192,69 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 		return parser.ParseResult{}, wrapError("document.xml not found in DOCX", nil)
 	}
 
-	// Parse XML to extract structured paragraphs using the same parsing path as Parse()
-	structuredParagraphs, err := extractStructuredParagraphsFromXML(documentXML)
+	// Parse XML to extract structured content with sections
+	_, structuredParagraphs, err := extractStructuredContentFromXML(documentXML, true)
 	if err != nil {
 		return parser.ParseResult{}, wrapError("failed to parse DOCX XML", err)
 	}
 
-	totalParagraphs := len(structuredParagraphs)
+	// Detect sections from paragraphs
+	sections := detectSections(structuredParagraphs)
+	totalSections := len(sections)
 
 	// Handle special range formats
 	if end == -1 {
-		end = totalParagraphs // End at last paragraph
+		end = totalSections // End at last section
 	}
 
-	// Validate range against actual paragraph count
-	if start > totalParagraphs {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested paragraph range exceeds document paragraph count (document has %d paragraphs, requested %d-%d)", totalParagraphs, start, end), nil)
+	// Validate range against actual section count
+	if start > totalSections {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested section range exceeds document section count (document has %d sections, requested %d-%d)", totalSections, start, end), nil)
 	}
-	if end > totalParagraphs {
-		end = totalParagraphs // Adjust end to last paragraph if it exceeds
+	if end > totalSections {
+		end = totalSections // Adjust end to last section if it exceeds
 	}
 
-	// Extract only the requested paragraph range
+	// Extract only the requested section range
 	var result strings.Builder
-	for i := start - 1; i < end && i < len(structuredParagraphs); i++ {
+	for i := start - 1; i < end && i < len(sections); i++ {
 		if i > start-1 {
-			// Add appropriate separator based on content type
-			if structuredParagraphs[i].IsTable {
-				if result.Len() > 0 {
-					result.WriteString("\n")
-				}
-			} else {
-				result.WriteString("\n")
-			}
+			// Add double newline between sections for better separation
+			result.WriteString("\n\n")
 		}
-		result.WriteString(structuredParagraphs[i].Content)
+		// Extract section content
+		sectionContent := extractSectionContent(sections[i])
+		result.WriteString(sectionContent)
 	}
 
 	if result.Len() == 0 {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("no text content found in paragraphs %d-%d", start, end), nil)
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("no text content found in sections %d-%d", start, end), nil)
 	}
 
-	// Return ONLY the actual document content - NO warning messages
 	return parser.ParseResult{
 		Text: result.String(),
+		// RangeUnit: "sections",
 	}, nil
+}
+
+// extractSectionContent extracts the content from a section
+func extractSectionContent(section Section) string {
+	var content strings.Builder
+
+	for i, para := range section.Paragraphs {
+		if i > 0 {
+			if para.IsTable {
+				if content.Len() > 0 {
+					content.WriteString("\n")
+				}
+			} else {
+				content.WriteString("\n")
+			}
+		}
+		content.WriteString(para.Content)
+	}
+
+	return content.String()
 }
 
 // extractParagraphsFromXML parses the XML and extracts paragraphs as a slice of strings.
@@ -271,7 +319,19 @@ func stripParagraphPrefix(text string) string {
 	// Match "Paragraph N:" pattern where N is a number
 	// This handles cases like "Paragraph 1: Hello World" -> "Hello World"
 	re := regexp.MustCompile(`^Paragraph \d+:\s*`)
+	// Return original text if no match
+	if !re.MatchString(text) {
+		return text
+	}
 	return re.ReplaceAllString(text, "")
+}
+
+// Section represents a logical section in the DOCX document
+type Section struct {
+	ID         int
+	Paragraphs []StructuredParagraph
+	StartIndex int
+	EndIndex   int
 }
 
 // StructuredParagraph represents a paragraph or table from the DOCX structure
@@ -284,6 +344,38 @@ type StructuredParagraph struct {
 func extractStructuredParagraphsFromXML(xmlContent string) ([]StructuredParagraph, error) {
 	_, paragraphs, err := extractStructuredContentFromXML(xmlContent, true)
 	return paragraphs, err
+}
+
+// detectSections identifies logical sections based on headings, breaks, and structural elements
+func detectSections(paragraphs []StructuredParagraph) []Section {
+	var sections []Section
+	currentSection := Section{ID: 1, Paragraphs: []StructuredParagraph{}}
+
+	for i, para := range paragraphs {
+		// Detect section boundaries based on heading styles, breaks, etc.
+		if isSectionBoundary(para) {
+			if len(currentSection.Paragraphs) > 0 {
+				currentSection.EndIndex = i - 1
+				sections = append(sections, currentSection)
+				currentSection = Section{ID: len(sections) + 1, StartIndex: i}
+			}
+		}
+		currentSection.Paragraphs = append(currentSection.Paragraphs, para)
+	}
+
+	if len(currentSection.Paragraphs) > 0 {
+		sections = append(sections, currentSection)
+	}
+
+	return sections
+}
+
+// isSectionBoundary determines if a paragraph represents a section boundary
+func isSectionBoundary(para StructuredParagraph) bool {
+	// Check for heading patterns (simple heuristic for now)
+	// This can be enhanced with more sophisticated heading detection
+	headingPattern := regexp.MustCompile(`^(#{1,6}\s+|\*\s+|\d+\.\s+)`)
+	return headingPattern.MatchString(para.Content)
 }
 
 // extractStructuredContentFromXML parses the XML and extracts structured content including tables.

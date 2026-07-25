@@ -2,12 +2,41 @@ package parser
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"testing"
 )
 
 type mockParser struct{}
 
-func (m *mockParser) Parse(ctx context.Context, req ParseRequest) (ParseResult, error) {
+func (m *mockParser) Parse(reader io.Reader) (*DocumentUnit, error) {
+	text, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	return &DocumentUnit{
+		Text: string(text),
+		Meta: map[string]interface{}{
+			"type": "mock",
+		},
+	}, nil
+}
+
+func (m *mockParser) ParseFile(path string) (*DocumentUnit, error) {
+	return &DocumentUnit{
+		Text: "mock file content for " + path,
+		Meta: map[string]interface{}{
+			"path": path,
+			"type": "mock",
+		},
+	}, nil
+}
+
+func (m *mockParser) ParseDirectory(dirPath string) ([]*DocumentUnit, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockParser) ParseWithContext(ctx context.Context, req ParseRequest) (ParseResult, error) {
 	return ParseResult{Text: "mock parsed text"}, nil
 }
 
@@ -101,7 +130,7 @@ func TestContextCancellation(t *testing.T) {
 
 	// This should still work since our mock doesn't check context
 	// but real implementations should handle context cancellation
-	result, err := p.Parse(ctx, req)
+	result, err := p.ParseWithContext(ctx, req)
 	if err != nil {
 		t.Errorf("Parse with cancelled context failed: %v", err)
 	}

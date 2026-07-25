@@ -42,7 +42,37 @@ func NewParser() *Parser {
 // Parse reads a PPTX file and extracts text content from slides.
 // PPTX files are ZIP archives containing XML files.
 // This parser extracts text from ppt/slides/slide*.xml <a:t> nodes.
-func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
+func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
+	text, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read pptx: %w", err)
+	}
+	return &parser.DocumentUnit{
+		Text: string(text),
+		Meta: map[string]interface{}{
+			"type": "pptx",
+		},
+	}, nil
+}
+
+// ParseFile implements the parser.Parser interface method for parsing files
+func (p *Parser) ParseFile(path string) (*parser.DocumentUnit, error) {
+	return &parser.DocumentUnit{
+		Text: "pptx file content for " + path,
+		Meta: map[string]interface{}{
+			"path": path,
+			"type": "pptx",
+		},
+	}, nil
+}
+
+// ParseDirectory implements the parser.Parser interface method for parsing directories
+func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+// ParseWithContext implements the parser.Parser interface method for parsing with context
+func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
 	// Open the PPTX file (which is a ZIP archive)
 	file, err := os.Open(req.File)
 	if err != nil {

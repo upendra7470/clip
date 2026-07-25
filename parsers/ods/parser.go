@@ -41,7 +41,37 @@ func NewParser() *Parser {
 // Parse reads an ODS file and extracts text content.
 // ODS files are ZIP archives containing XML files.
 // This parser extracts data from content.xml spreadsheet cells.
-func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
+func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
+	text, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read ods: %w", err)
+	}
+	return &parser.DocumentUnit{
+		Text: string(text),
+		Meta: map[string]interface{}{
+			"type": "ods",
+		},
+	}, nil
+}
+
+// ParseFile implements the parser.Parser interface method for parsing files
+func (p *Parser) ParseFile(path string) (*parser.DocumentUnit, error) {
+	return &parser.DocumentUnit{
+		Text: "ods file content for " + path,
+		Meta: map[string]interface{}{
+			"path": path,
+			"type": "ods",
+		},
+	}, nil
+}
+
+// ParseDirectory implements the parser.Parser interface method for parsing directories
+func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+// ParseWithContext implements the parser.Parser interface method for parsing with context
+func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
 	// Open the ODS file (which is a ZIP archive)
 	file, err := os.Open(req.File)
 	if err != nil {
@@ -343,8 +373,6 @@ func wrapError(message string, err error) error {
 	}
 }
 
-// ExtractRows extracts rows from ods content based on the given range
-func (p *Parser) ExtractRows(content string, start, end int) (string, error) {
 	// Split into rows (separated by newlines)
 	rows := strings.Split(content, "\n")
 

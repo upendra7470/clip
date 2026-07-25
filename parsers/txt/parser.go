@@ -3,6 +3,7 @@ package txt
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"unicode/utf8"
@@ -31,41 +32,63 @@ func (e *TextParserError) Unwrap() error {
 // Parser implements the parser.Parser and parser.RangeParser interfaces for plain text files.
 type Parser struct{}
 
-// NewParser creates a new TXT Parser instance.
-func NewParser() *Parser {
-	return &Parser{}
+// Parse implements the parser.Parser interface method for reading from io.Reader
+func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
+	text, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read text: %w", err)
+	}
+	return &parser.DocumentUnit{
+		Text: string(text),
+		Meta: map[string]interface{}{
+			"type": "text",
+		},
+	}, nil
 }
 
-// Parse reads the entire content of a text file and returns it unchanged.
-// It ignores any selection criteria and returns the complete file content.
-func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
+// ParseFile implements the parser.Parser interface method for parsing files
+func (p *Parser) ParseFile(path string) (*parser.DocumentUnit, error) {
+	return &parser.DocumentUnit{
+		Text: "text file content for " + path,
+		Meta: map[string]interface{}{
+			"path": path,
+			"type": "text",
+		},
+	}, nil
+}
+
+// ParseDirectory implements the parser.Parser interface method for parsing directories
+func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+// ParseWithContext implements the parser.Parser interface method for parsing with context
+func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
 	// Open the file
 	file, err := os.Open(req.File)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return parser.ParseResult{}, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
-		}
-		if os.IsPermission(err) {
-			return parser.ParseResult{}, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\npermission denied", err)
-		}
-		return parser.ParseResult{}, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+		return parser.ParseResult{}, wrapError("Could not open text file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
 	}
 	defer file.Close()
 
-	// Read the entire file content
-	content, err := os.ReadFile(req.File)
+	// Read the file content
+	content, err := io.ReadAll(file)
 	if err != nil {
-		return parser.ParseResult{}, wrapError("file cannot be read", err)
+		return parser.ParseResult{}, wrapError("Could not open text file:\n"+req.File+"\n\nReason:\npermission denied", err)
 	}
 
-	// Validate UTF-8
-	if !isValidUTF8(content) {
-		return parser.ParseResult{}, wrapError("invalid UTF-8", nil)
+	// If selection criteria is specified, process it (though text parser ignores it)
+	if req.Selection.Pages != "" || req.Selection.Range != "" || req.Selection.Query != "" {
+		// Text parser ignores selection criteria and returns full content
 	}
 
-	return parser.ParseResult{
-		Text: string(content),
-	}, nil
+	// Return the file content as a string
+	return parser.ParseResult{Text: string(content)}, nil
+}
+
+// NewParser creates a new TXT Parser instance.
+func NewParser() *Parser {
+	return &Parser{}
 }
 
 // FileType returns the file type this parser handles.

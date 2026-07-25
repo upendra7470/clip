@@ -111,7 +111,7 @@ func (app *Application) ExtractWithRange(ctx context.Context, filePath string, r
 	} else {
 		// Normal parsing (full document)
 		var parseErr error
-		result, parseErr = parserObj.Parse(ctx, req)
+		result, parseErr = parserObj.ParseWithContext(ctx, req)
 		if parseErr != nil {
 			err = parseErr
 		}

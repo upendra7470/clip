@@ -13,5 +13,5 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/richardlehane/msoleps v1.0.3 // indirect
-	github.com/unidoc/unioffice v1.39.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
 )

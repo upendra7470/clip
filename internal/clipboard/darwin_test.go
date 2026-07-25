@@ -7,6 +7,7 @@ import (
 )
 
 func TestCopyDarwin(t *testing.T) {
+	// Add test for warning message
 	tests := []struct {
 		name    string
 		text    string

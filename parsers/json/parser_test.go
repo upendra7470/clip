@@ -25,7 +25,7 @@ func TestParseMissingFile(t *testing.T) {
 		File: "nonexistent.json",
 	}
 
-	_, err := p.Parse(context.Background(), req)
+	_, err := p.ParseWithContext(context.Background(), req)
 
 	if err == nil {
 		t.Fatal("Parse() expected error for missing file, got nil")
@@ -51,7 +51,7 @@ func TestParseEmptyFile(t *testing.T) {
 		File: filePath,
 	}
 
-	_, err = p.Parse(context.Background(), req)
+	_, err = p.ParseWithContext(context.Background(), req)
 
 	if err == nil {
 		t.Fatal("Parse() expected error for empty file, got nil")
@@ -78,7 +78,7 @@ func TestParseInvalidJSON(t *testing.T) {
 		File: filePath,
 	}
 
-	_, err = p.Parse(context.Background(), req)
+	_, err = p.ParseWithContext(context.Background(), req)
 
 	if err == nil {
 		t.Fatal("Parse() expected error for invalid JSON, got nil")
@@ -109,7 +109,7 @@ func TestParseSimpleObject(t *testing.T) {
 		File: filePath,
 	}
 
-	result, err := p.Parse(context.Background(), req)
+	result, err := p.ParseWithContext(context.Background(), req)
 
 	if err != nil {
 		t.Fatalf("Parse() unexpected error: %v", err)
@@ -155,7 +155,7 @@ func TestParseNestedObject(t *testing.T) {
 		File: filePath,
 	}
 
-	result, err := p.Parse(context.Background(), req)
+	result, err := p.ParseWithContext(context.Background(), req)
 
 	if err != nil {
 		t.Fatalf("Parse() unexpected error: %v", err)
@@ -201,7 +201,7 @@ func TestParseArray(t *testing.T) {
 		File: filePath,
 	}
 
-	result, err := p.Parse(context.Background(), req)
+	result, err := p.ParseWithContext(context.Background(), req)
 
 	if err != nil {
 		t.Fatalf("Parse() unexpected error: %v", err)
@@ -241,7 +241,7 @@ func TestParseUnicodeContent(t *testing.T) {
 		File: filePath,
 	}
 
-	result, err := p.Parse(context.Background(), req)
+	result, err := p.ParseWithContext(context.Background(), req)
 
 	if err != nil {
 		t.Fatalf("Parse() unexpected error: %v", err)
@@ -276,7 +276,7 @@ func TestParseBooleanAndNull(t *testing.T) {
 		File: filePath,
 	}
 
-	result, err := p.Parse(context.Background(), req)
+	result, err := p.ParseWithContext(context.Background(), req)
 
 	if err != nil {
 		t.Fatalf("Parse() unexpected error: %v", err)
@@ -323,7 +323,7 @@ func TestParseNumbers(t *testing.T) {
 		File: filePath,
 	}
 
-	result, err := p.Parse(context.Background(), req)
+	result, err := p.ParseWithContext(context.Background(), req)
 
 	if err != nil {
 		t.Fatalf("Parse() unexpected error: %v", err)
@@ -358,7 +358,7 @@ func TestErrorWrapping(t *testing.T) {
 		File: "nonexistent.json",
 	}
 
-	_, err := p.Parse(context.Background(), req)
+	_, err := p.ParseWithContext(context.Background(), req)
 
 	if err == nil {
 		t.Fatal("Expected error for nonexistent file")
@@ -367,6 +367,81 @@ func TestErrorWrapping(t *testing.T) {
 	// Check that error contains expected message
 	if !containsError(err.Error(), "Could not open JSON file") {
 		t.Errorf("Error message = %q, want to contain 'Could not open JSON file'", err.Error())
+	}
+}
+
+func TestGetRangeUnit(t *testing.T) {
+	p := &Parser{}
+	want := string(parser.Entries)
+
+	if got := p.GetRangeUnit(); got != want {
+		t.Errorf("GetRangeUnit() = %q, want %q", got, want)
+	}
+}
+
+func TestParseRange(t *testing.T) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "range_test.json")
+
+	// Create JSON with multiple entries
+	content := []byte(`{
+  "name": "Sai",
+  "age": 19,
+  "city": "Hyderabad",
+  "country": "India"
+}`)
+	err := os.WriteFile(filePath, content, 0644)
+	if err != nil {
+		t.Fatalf("Failed to create range test JSON file: %v", err)
+	}
+
+	p := &Parser{}
+	req := parser.ParseRequest{
+		File: filePath,
+	}
+
+	// Test parsing specific line range
+	result, err := p.ParseRange(context.Background(), req, 2, 3)
+	if err != nil {
+		t.Fatalf("ParseRange() unexpected error: %v", err)
+	}
+
+	// Check that the result contains expected content from lines 2-3
+	expectedContent := `"age": 19,`
+	if !strings.Contains(result.Text, expectedContent) {
+		t.Errorf("ParseRange() result missing expected content: got %q, want to contain %q", result.Text, expectedContent)
+	}
+}
+
+func TestParseRangeInvalid(t *testing.T) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "range_invalid.json")
+
+	// Create JSON file
+	content := []byte(`{
+  "name": "Sai",
+  "age": 19
+}`)
+	err := os.WriteFile(filePath, content, 0644)
+	if err != nil {
+		t.Fatalf("Failed to create range invalid JSON file: %v", err)
+	}
+
+	p := &Parser{}
+	req := parser.ParseRequest{
+		File: filePath,
+	}
+
+	// Test invalid range (start > end)
+	_, err = p.ParseRange(context.Background(), req, 3, 2)
+	if err == nil {
+		t.Fatal("ParseRange() expected error for invalid range, got nil")
+	}
+
+	// Test range exceeding file lines
+	_, err = p.ParseRange(context.Background(), req, 1, 100)
+	if err == nil {
+		t.Fatal("ParseRange() expected error for range exceeding file lines, got nil")
 	}
 }
 

@@ -2,70 +2,114 @@ package parser
 
 import (
 	"context"
-
-	"github.com/upendra7470/clip/internal/filetype"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 )
 
-// Parser defines the interface that all document parsers must implement.
-type Parser interface {
-	// Parse extracts text from a document file.
-	// The context allows for cancellation and timeouts.
-	// The ParseRequest contains the file path and any selection criteria.
-	// Returns the extracted text in ParseResult or an error.
-	Parse(ctx context.Context, req ParseRequest) (ParseResult, error)
-}
+// Parser interface defines the contract for all parsers
+//go:generate mockgen -destination=./mocks/mock_parser.go -package=mocks github.com/yourorg/clip/internal/parser Parser
+//go:generate mockgen -destination=./mocks/mock_parser.go -package=mocks github.com/yourorg/clip/internal/parser Parser
 
-// RangeParser is an optional interface that parsers can implement
-// to support range extraction for their specific document type.
-type RangeParser interface {
-	Parser
+// Parser represents a generic file parser
+//go:generate mockgen -destination=./mocks/mock_parser.go -package=mocks github.com/yourorg/clip/internal/parser Parser
 
-	// ParseRange extracts text from a specific range in a document.
-	// The context allows for cancellation and timeouts.
-	// The ParseRequest contains the file path and any selection criteria.
-	// start and end are 1-based unit numbers (pages, slides, paragraphs, lines, rows, etc.).
-	// Returns the extracted text in ParseResult or an error.
-	ParseRange(ctx context.Context, req ParseRequest, start, end int) (ParseResult, error)
+// Parser represents a generic file parser
+//go:generate mockgen -destination=./mocks/mock_parser.go -package=mocks github.com/yourorg/clip/internal/parser Parser
 
-	// GetRangeUnit returns the unit type that this parser uses for ranges.
-	// Returns a human-readable string like "pages", "slides", "paragraphs", "lines", "rows".
-	GetRangeUnit() string
-}
-
-// ParseRequest contains the input parameters for parsing a document.
+// ParseRequest represents a request to parse a file with optional selection criteria
 type ParseRequest struct {
-	// File is the path to the document file to parse.
-	File string
-
-	// Selection specifies which parts of the document to extract.
-	// If empty, the entire document should be extracted.
+	File      string
 	Selection Selection
 }
 
-// ParseResult contains the output of document parsing.
-type ParseResult struct {
-	// Text is the extracted text from the document.
-	Text string
-}
-
-// Selection represents criteria for selecting specific content from a document.
-// This is a minimal data model that can be extended in future phases.
+// Selection represents the selection criteria for parsing
 type Selection struct {
-	// Pages specifies which pages to extract (e.g., "1-3,5").
-	// Empty means all pages.
 	Pages string
-
-	// Range specifies a text range to extract (e.g., "1:10-20:30").
-	// Format and interpretation are parser-specific.
 	Range string
-
-	// Query specifies a search query for targeted extraction.
-	// Empty means no query filtering.
 	Query string
 }
 
-// FileType returns the file type that this parser handles.
-// This should be implemented by each parser implementation.
-type FileTypeAware interface {
-	FileType() filetype.FileType
+// ParseResult represents the result of a parse operation
+type ParseResult struct {
+	Text string
+}
+
+// RangeParser interface defines the contract for parsers that support range-based parsing
+type RangeParser interface {
+	ParseRange(ctx context.Context, req ParseRequest, start, end int) (ParseResult, error)
+	GetRangeUnit() string
+}
+
+type Parser interface {
+	// Parse parses the given reader and returns a DocumentUnit
+	Parse(io.Reader) (*DocumentUnit, error)
+	// ParseFile parses the given file and returns a DocumentUnit
+	ParseFile(string) (*DocumentUnit, error)
+	// ParseDirectory parses all files in the given directory and returns a slice of DocumentUnits
+	ParseDirectory(string) ([]*DocumentUnit, error)
+	// ParseWithContext parses with context and request
+	ParseWithContext(ctx context.Context, req ParseRequest) (ParseResult, error)
+}
+
+// DocumentUnit represents a parsed document unit
+//go:generate mockgen -destination=./mocks/mock_document_unit.go -package=mocks github.com/yourorg/clip/internal/parser DocumentUnit
+
+// NewDocumentUnit creates a new DocumentUnit with the given content and metadata
+func NewDocumentUnit(text string, meta map[string]interface{}) *DocumentUnit {
+	return &DocumentUnit{
+		Text: text,
+		Meta: meta,
+	}
+}
+
+// ParseFile parses the given file and returns a DocumentUnit
+func ParseFile(path string) (*DocumentUnit, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	text, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	meta := map[string]interface{}{
+		"path": path,
+		"type": "text",
+	}
+
+	return NewDocumentUnit(string(text), meta), nil
+}
+
+// ParseDirectory parses all files in the given directory and returns a slice of DocumentUnits
+func ParseDirectory(dirPath string) ([]*DocumentUnit, error) {
+	var documentUnits []*DocumentUnit
+
+	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return fmt.Errorf("failed to walk directory: %w", err)
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		docUnit, err := ParseFile(path)
+		if err != nil {
+			return fmt.Errorf("failed to parse file %s: %w", path, err)
+		}
+
+		documentUnits = append(documentUnits, docUnit)
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse directory: %w", err)
+	}
+
+	return documentUnits, nil
 }

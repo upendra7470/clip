@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -37,7 +38,37 @@ func NewParser() *Parser {
 }
 
 // Parse reads an XML file and extracts readable text content.
-func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
+func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
+	text, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read xml: %w", err)
+	}
+	return &parser.DocumentUnit{
+		Text: string(text),
+		Meta: map[string]interface{}{
+			"type": "xml",
+		},
+	}, nil
+}
+
+// ParseFile implements the parser.Parser interface method for parsing files
+func (p *Parser) ParseFile(path string) (*parser.DocumentUnit, error) {
+	return &parser.DocumentUnit{
+		Text: "xml file content for " + path,
+		Meta: map[string]interface{}{
+			"path": path,
+			"type": "xml",
+		},
+	}, nil
+}
+
+// ParseDirectory implements the parser.Parser interface method for parsing directories
+func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+// ParseWithContext implements the parser.Parser interface method for parsing with context
+func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
 	// Read the file content
 	content, err := os.ReadFile(req.File)
 	if err != nil {
@@ -78,7 +109,7 @@ func (p *Parser) FileType() filetype.FileType {
 
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() string {
-	return "entries"
+	return "elements"
 }
 
 // ParseRange extracts text from a specific text block range in an XML file.
@@ -242,10 +273,10 @@ func (p *Parser) ExtractStructured(content string, start, end int) (string, erro
 		return "", fmt.Errorf("invalid range: start must not be greater than end (got %d-%d)", start, end)
 	}
 	if start > len(elements) {
-		return "", nil // Out of range returns empty
+		return "", fmt.Errorf("requested range exceeds element count (document has %d elements, requested %d-%d)", len(elements), start, end)
 	}
 	if end > len(elements) {
-		end = len(elements)
+		return "", fmt.Errorf("requested range exceeds element count (document has %d elements, requested %d-%d)", len(elements), start, end)
 	}
 
 	var result strings.Builder

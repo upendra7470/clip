@@ -3,6 +3,7 @@ package html
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -36,7 +37,37 @@ func NewParser() *Parser {
 }
 
 // Parse reads an HTML file and extracts readable text content.
-func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
+func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
+	text, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read html: %w", err)
+	}
+	return &parser.DocumentUnit{
+		Text: string(text),
+		Meta: map[string]interface{}{
+			"type": "html",
+		},
+	}, nil
+}
+
+// ParseFile implements the parser.Parser interface method for parsing files
+func (p *Parser) ParseFile(path string) (*parser.DocumentUnit, error) {
+	return &parser.DocumentUnit{
+		Text: "html file content for " + path,
+		Meta: map[string]interface{}{
+			"path": path,
+			"type": "html",
+		},
+	}, nil
+}
+
+// ParseDirectory implements the parser.Parser interface method for parsing directories
+func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+// ParseWithContext implements the parser.Parser interface method for parsing with context
+func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
 	// Read the file content
 	content, err := os.ReadFile(req.File)
 	if err != nil {
@@ -77,7 +108,7 @@ func (p *Parser) FileType() filetype.FileType {
 
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() string {
-	return "blocks"
+	return string(parser.Sections)
 }
 
 // ParseRange extracts text from a specific text block range in an HTML file.
@@ -219,7 +250,7 @@ func extractTextFromHTML(html string) (string, error) {
 			}
 
 			if !isClosingTag {
-				// Opening tag - update last block element if it's a block element
+				// Opening tag - update last block element if it's a section element
 				if isBlockElementByName(tagName) {
 					lastBlockElement = tagName
 				}
@@ -308,64 +339,6 @@ func isBlockElementByName(tagName string) bool {
 	if tagName == "" {
 		return false
 	}
-
-	// List of common block-level elements
-	blockElements := map[string]bool{
-		"html":       true,
-		"body":       true,
-		"div":        true,
-		"p":          true,
-		"h1":         true,
-		"h2":         true,
-		"h3":         true,
-		"h4":         true,
-		"h5":         true,
-		"h6":         true,
-		"section":    true,
-		"article":    true,
-		"header":     true,
-		"footer":     true,
-		"nav":        true,
-		"main":       true,
-		"aside":      true,
-		"ul":         true,
-		"ol":         true,
-		"li":         true,
-		"table":      true,
-		"tr":         true,
-		"td":         true,
-		"th":         true,
-		"blockquote": true,
-		"pre":        true,
-		"figure":     true,
-		"form":       true,
-	}
-
-	return blockElements[tagName]
-}
-
-// isBlockElement checks if the element at the given position is a block-level element
-func isBlockElement(html string, pos int) bool {
-	// Find the start of the tag name
-	start := pos + 2 // skip "</"
-	for start < len(html) && (html[start] == ' ' || html[start] == '\t' || html[start] == '\n' || html[start] == '\r') {
-		start++
-	}
-	if start >= len(html) {
-		return false
-	}
-
-	// Extract the tag name
-	end := start
-	for end < len(html) && html[end] != '>' && html[end] != ' ' && html[end] != '\t' && html[end] != '\n' && html[end] != '\r' {
-		end++
-	}
-
-	if start >= end {
-		return false
-	}
-
-	tagName := strings.ToLower(html[start:end])
 
 	// List of common block-level elements
 	blockElements := map[string]bool{

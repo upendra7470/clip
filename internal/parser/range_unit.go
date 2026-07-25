@@ -4,10 +4,12 @@ package parser
 type RangeUnit string
 
 const (
-	Pages      RangeUnit = "pages"
-	Slides     RangeUnit = "slides"
-	Paragraphs RangeUnit = "paragraphs"
-	Lines      RangeUnit = "lines"
-	Rows       RangeUnit = "rows"
-	Blocks     RangeUnit = "blocks"
+	Pages    RangeUnit = "pages"
+	Slides   RangeUnit = "slides"
+	Blocks   RangeUnit = "blocks"
+	Lines    RangeUnit = "lines"
+	Rows     RangeUnit = "rows"
+	Sections RangeUnit = "sections"
+	Entries  RangeUnit = "entries"
+	Values   RangeUnit = "values"
 )

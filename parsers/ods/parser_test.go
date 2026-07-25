@@ -6,8 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestExtractRows(t *testing.T) {
-	tests := []struct {
+	var tests = []struct {
 		name     string
 		content  string
 		start    int

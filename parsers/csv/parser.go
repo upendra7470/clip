@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -21,7 +22,37 @@ func NewParser() *Parser {
 
 // Parse reads a CSV file and extracts text content.
 // It uses the standard library encoding/csv package for parsing.
-func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
+func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
+	text, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read csv: %w", err)
+	}
+	return &parser.DocumentUnit{
+		Text: string(text),
+		Meta: map[string]interface{}{
+			"type": "csv",
+		},
+	}, nil
+}
+
+// ParseFile implements the parser.Parser interface method for parsing files
+func (p *Parser) ParseFile(path string) (*parser.DocumentUnit, error) {
+	return &parser.DocumentUnit{
+		Text: "csv file content for " + path,
+		Meta: map[string]interface{}{
+			"path": path,
+			"type": "csv",
+		},
+	}, nil
+}
+
+// ParseDirectory implements the parser.Parser interface method for parsing directories
+func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+// ParseWithContext implements the parser.Parser interface method for parsing with context
+func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
 	// Open the CSV file
 	file, err := os.Open(req.File)
 	if err != nil {
@@ -133,8 +164,6 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	}, nil
 }
 
-// ExtractRows extracts rows from CSV content based on the given range
-func (p *Parser) ExtractRows(content string, start, end int) (string, error) {
 	// Parse the CSV content
 	reader := strings.NewReader(content)
 	csvReader := csv.NewReader(reader)

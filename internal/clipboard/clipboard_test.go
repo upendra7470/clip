@@ -6,6 +6,7 @@ import (
 )
 
 func TestCopyUnsupportedPlatform(t *testing.T) {
+	// Add test for warning message
 	// This test should only run on unsupported platforms
 	// We'll mock this by testing the error path
 	err := copyUnsupported()

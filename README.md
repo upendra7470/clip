@@ -62,6 +62,30 @@ clip -h
 
 # Show version
 clip --version
+
+# Extract text from a file
+clip extract file.ext --range 1-10:lines
+
+# Extract text from a file using pages
+clip extract file.ext --range 1-10:pages
+
+# Extract text from a file using slides
+clip extract file.ext --range 1-10:slides
+
+# Extract text from a file using blocks
+clip extract file.ext --range 1-10:blocks
+
+# Extract text from a file using rows
+clip extract file.ext --range 1-10:rows
+
+# Extract text from a file using sections
+clip extract file.ext --range 1-10:sections
+
+# Extract text from a file using entries
+clip extract file.ext --range 1-10:entries
+
+# Extract text from a file using values
+clip extract file.ext --range 1-10:values
 ```
 
 ### Future Usage Examples

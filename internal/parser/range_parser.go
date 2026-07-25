@@ -88,12 +88,12 @@ func ValidateRange(r Range, docUnit DocumentUnit) error {
 
 	// Additional validation based on document unit
 	switch docUnit.Type {
-	case "lines":
-		// No additional validation for lines
+	case "sections":
+	// No additional validation for blocks
 	case "pages":
-		// No additional validation for pages
+	// No additional validation for pages
 	case "characters":
-		// No additional validation for characters
+	// No additional validation for characters
 	default:
 		return fmt.Errorf("unknown document unit: %s", docUnit.Type)
 	}
