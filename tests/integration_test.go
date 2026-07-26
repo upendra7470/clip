@@ -36,8 +36,8 @@ func TestIntegrationJSON(t *testing.T) {
 	req := parser.ParseRequest{File: filePath}
 
 	// Test GetRangeUnit
-	if p.GetRangeUnit() != string(parser.Entries) {
-		t.Errorf("GetRangeUnit() = %q, want %q", p.GetRangeUnit(), parser.Entries)
+	if p.GetRangeUnit() != parser.RangeUnitEntries {
+		t.Errorf("GetRangeUnit() = %q, want %q", p.GetRangeUnit(), parser.RangeUnitEntries)
 	}
 
 	// Test ParseRange with valid range
@@ -84,8 +84,8 @@ skills:
 	req := parser.ParseRequest{File: filePath}
 
 	// Test GetRangeUnit
-	if p.GetRangeUnit() != string(parser.Values) {
-		t.Errorf("GetRangeUnit() = %q, want %q", p.GetRangeUnit(), parser.Values)
+	if p.GetRangeUnit() != parser.RangeUnitValues {
+		t.Errorf("GetRangeUnit() = %q, want %q", p.GetRangeUnit(), parser.RangeUnitValues)
 	}
 
 	// Test ParseRange with valid range
@@ -197,8 +197,8 @@ func TestIntegrationHTML(t *testing.T) {
 	req := parser.ParseRequest{File: filePath}
 
 	// Test GetRangeUnit
-	if p.GetRangeUnit() != string(parser.Sections) {
-		t.Errorf("GetRangeUnit() = %q, want %q", p.GetRangeUnit(), parser.Sections)
+	if p.GetRangeUnit() != parser.RangeUnitSections {
+		t.Errorf("GetRangeUnit() = %q, want %q", p.GetRangeUnit(), parser.RangeUnitSections)
 	}
 
 	// Test ParseRange with valid range
@@ -289,14 +289,14 @@ func TestIntegrationAllFormats(t *testing.T) {
 			ext:       ".json",
 			content:   "{\n  \"name\": \"John\",\n  \"age\": 30,\n  \"city\": \"NYC\"\n}",
 			parser:    json.NewParser(),
-			rangeUnit: string(parser.Entries),
+			rangeUnit: string(parser.RangeUnitEntries),
 		},
 		{
 			name:      "YAML",
 			ext:       ".yaml",
 			content:   "name: John\nage: 30\ncity: NYC",
 			parser:    yaml.NewParser(),
-			rangeUnit: string(parser.Values),
+			rangeUnit: string(parser.RangeUnitValues),
 		},
 		{
 			name:      "Markdown",
@@ -310,7 +310,7 @@ func TestIntegrationAllFormats(t *testing.T) {
 			ext:       ".html",
 			content:   "<html><body><section><p>Block 1</p></section><section><p>Block 2</p></section></body></html>",
 			parser:    html.NewParser(),
-			rangeUnit: string(parser.Sections),
+			rangeUnit: string(parser.RangeUnitSections),
 		},
 		{
 			name:      "XML",
@@ -334,7 +334,7 @@ func TestIntegrationAllFormats(t *testing.T) {
 			req := parser.ParseRequest{File: filePath}
 
 			// Test GetRangeUnit
-			if tt.parser.GetRangeUnit() != tt.rangeUnit {
+			if string(tt.parser.GetRangeUnit()) != tt.rangeUnit {
 				t.Errorf("GetRangeUnit() = %q, want %q", tt.parser.GetRangeUnit(), tt.rangeUnit)
 			}
 

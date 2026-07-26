@@ -141,8 +141,8 @@ func (p *Parser) FileType() filetype.FileType {
 }
 
 // GetRangeUnit returns the unit type that this parser uses for ranges.
-func (p *Parser) GetRangeUnit() string {
-	return "paragraphs"
+func (p *Parser) GetRangeUnit() parser.RangeUnit {
+	return parser.RangeUnitParagraphs
 }
 
 // ParseRange extracts text from a specific paragraph range in an ODT file.

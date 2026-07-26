@@ -33,12 +33,31 @@ Clip will become the go-to tool for developers, researchers, and professionals w
 git clone https://github.com/upendra7470/clip.git
 cd clip
 go build -o clip ./cmd/clip
+sudo cp clip /usr/local/bin/clip
 ```
 
 ### Install to System
 
 ```bash
 go install github.com/upendra7470/clip/cmd/clip@latest
+# Verify installation
+clip --version
+```
+
+# Verify installation
+clip --version
+
+## Troubleshooting
+
+### PATH Issues
+
+If the `clip` command is not recognized after installation, ensure that your PATH environment variable includes the directory where the binary was installed. For Go installations, this is typically `$GOPATH/bin`.
+
+```bash
+# Check if the binary is in your PATH
+echo $PATH | grep $GOPATH/bin
+
+# If not, add it to your PATH
 ```
 
 ## Build Instructions
@@ -49,43 +68,28 @@ go build -o clip ./cmd/clip
 
 # Run tests
 go test ./...
+
+# Install to system
+sudo cp clip /usr/local/bin/clip
 ```
 
 ## Usage
 
-### Basic Usage
-
 ```bash
 # Show help
 clip --help
-clip -h
 
 # Show version
 clip --version
 
 # Extract text from a file
-clip extract file.ext --range 1-10:lines
+clip report.pdf
 
-# Extract text from a file using pages
-clip extract file.ext --range 1-10:pages
-
-# Extract text from a file using slides
-clip extract file.ext --range 1-10:slides
-
-# Extract text from a file using blocks
-clip extract file.ext --range 1-10:blocks
-
-# Extract text from a file using rows
-clip extract file.ext --range 1-10:rows
-
-# Extract text from a file using sections
-clip extract file.ext --range 1-10:sections
-
-# Extract text from a file using entries
-clip extract file.ext --range 1-10:entries
-
-# Extract text from a file using values
-clip extract file.ext --range 1-10:values
+# Extract text from a file with a range
+clip report.pdf 5-10
+clip "The Brain.docx" 1-3
+clip presentation.pptx 2-5
+clip spreadsheet.xlsx 2-10
 ```
 
 ### Future Usage Examples

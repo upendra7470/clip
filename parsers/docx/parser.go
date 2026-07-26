@@ -14,7 +14,7 @@ import (
 	"github.com/upendra7470/clip/internal/parser"
 )
 
-// Parser implements the parser.Parser and parser.RangeParser interfaces for DOCX files.
+// Parser implements the parser.Parser, parser.RangeParser, and parser.DocumentLister interfaces for DOCX files. It preserves headings, paragraphs, tables, and nested table content.
 type Parser struct{}
 
 // NewParser creates a new DOCX Parser instance.
@@ -33,7 +33,8 @@ func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
 	return &parser.DocumentUnit{
 		Text: string(text),
 		Meta: map[string]interface{}{
-			"type": "docx",
+			"type":                "docx",
+			"preserved_structure": "headings, paragraphs, tables, nested table content",
 		},
 	}, nil
 }
@@ -124,12 +125,86 @@ func (p *Parser) FileType() filetype.FileType {
 	return filetype.FileTypeDOCX
 }
 
-// GetRangeUnit returns the unit type that this parser uses for ranges.
-func (p *Parser) GetRangeUnit() string {
-	return "sections"
+// ListUnits implements the parser.DocumentLister interface for DOCX files.
+func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
+	// Open the DOCX file (which is a ZIP archive)
+	file, err := os.Open(req.File)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil, wrapError("Could not open DOCX file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		}
+		if os.IsPermission(err) {
+			return 0, nil, wrapError("Could not open DOCX file:\n"+req.File+"\n\nReason:\npermission denied", err)
+		}
+		return 0, nil, wrapError("Could not open DOCX file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+	}
+	defer file.Close()
+
+	// Get file info for size
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return 0, nil, wrapError("failed to get file info", err)
+	}
+
+	// Read the ZIP archive
+	zipReader, err := zip.NewReader(file, fileInfo.Size())
+	if err != nil {
+		return 0, nil, wrapError("failed to read DOCX as ZIP archive", err)
+	}
+
+	// Find and extract word/document.xml
+	var documentXML string
+	for _, zipFile := range zipReader.File {
+		if zipFile.Name == "word/document.xml" {
+			rc, err := zipFile.Open()
+			if err != nil {
+				return 0, nil, wrapError("failed to open document.xml", err)
+			}
+			defer rc.Close()
+
+			content, err := io.ReadAll(rc)
+			if err != nil {
+				return 0, nil, wrapError("failed to read document.xml", err)
+			}
+			documentXML = string(content)
+			break
+		}
+	}
+
+	if documentXML == "" {
+		return 0, nil, wrapError("document.xml not found in DOCX", nil)
+	}
+
+	// Parse XML to extract structured content with sections
+	_, structuredParagraphs, err := extractStructuredContentFromXML(documentXML, true)
+	if err != nil {
+		return 0, nil, wrapError("failed to parse DOCX XML", err)
+	}
+
+	// Detect sections from paragraphs
+	sections := detectSections(structuredParagraphs)
+	totalSections := len(sections)
+
+	// Extract section titles
+	var sectionTitles []string
+	for _, section := range sections {
+		// Use the first paragraph of each section as the title
+		if len(section.Paragraphs) > 0 {
+			sectionTitles = append(sectionTitles, section.Paragraphs[0].Content)
+		} else {
+			sectionTitles = append(sectionTitles, "")
+		}
+	}
+
+	return totalSections, sectionTitles, nil
 }
 
-// ParseRange extracts text from a specific section range in a DOCX file.
+// GetRangeUnit returns the unit type that this parser uses for ranges. It preserves section boundaries and maintains the original document structure.
+func (p *Parser) GetRangeUnit() parser.RangeUnit {
+	return parser.RangeUnitSections
+}
+
+// ParseRange extracts text from a specific section range in a DOCX file. It preserves section boundaries and maintains the original document structure.
 func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
 	// Validate section range
 	if start < 1 || end < 1 {

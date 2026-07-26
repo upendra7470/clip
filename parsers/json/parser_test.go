@@ -527,7 +527,7 @@ func TestErrorWrapping(t *testing.T) {
 
 func TestGetRangeUnit(t *testing.T) {
 	p := &Parser{}
-	want := string(parser.Entries)
+	want := parser.RangeUnit("entries")
 
 	if got := p.GetRangeUnit(); got != want {
 		t.Errorf("GetRangeUnit() = %q, want %q", got, want)

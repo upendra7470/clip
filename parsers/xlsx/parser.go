@@ -11,6 +11,7 @@ import (
 
 	"github.com/upendra7470/clip/internal/filetype"
 	"github.com/upendra7470/clip/internal/parser"
+	"github.com/xuri/excelize/v2"
 )
 
 // XLSXParserError represents an error that occurs during XLSX parsing.
@@ -30,7 +31,7 @@ func (e *XLSXParserError) Unwrap() error {
 	return e.cause
 }
 
-// Parser implements the parser.Parser and parser.RangeParser interfaces for XLSX files.
+// Parser implements the parser.Parser, parser.RangeParser, and parser.DocumentLister interfaces for XLSX files.
 type Parser struct{}
 
 // NewParser creates a new XLSX Parser instance.
@@ -47,7 +48,8 @@ func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
 	return &parser.DocumentUnit{
 		Text: string(text),
 		Meta: map[string]interface{}{
-			"type": filetype.FileTypeXLSX,
+			"type":                filetype.FileTypeXLSX,
+			"preserved_structure": "sheet names, row/column structure, tables in readable format",
 		},
 	}, nil
 }
@@ -109,9 +111,58 @@ func (p *Parser) FileType() filetype.FileType {
 	return filetype.FileTypeXLSX
 }
 
+// ListUnits implements the parser.DocumentLister interface for XLSX files.
+func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
+	// Open the XLSX file
+	file, err := os.Open(req.File)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil, wrapError("Could not open XLSX file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		}
+		if os.IsPermission(err) {
+			return 0, nil, wrapError("Could not open XLSX file:\n"+req.File+"\n\nReason:\npermission denied", err)
+		}
+		return 0, nil, wrapError("Could not open XLSX file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+	}
+	defer file.Close()
+
+	// Get file info for size
+	_, err = file.Stat()
+	if err != nil {
+		return 0, nil, wrapError("failed to get file info", err)
+	}
+
+	// Read the XLSX file
+	xlsxFile, err := excelize.OpenReader(file)
+	if err != nil {
+		return 0, nil, wrapError("failed to parse XLSX file", err)
+	}
+
+	// Get all sheet names
+	sheetNames := xlsxFile.GetSheetList()
+	if len(sheetNames) == 0 {
+		return 0, nil, wrapError("no sheets found in XLSX file", nil)
+	}
+
+	// For each sheet, get the row count
+	var totalRows int
+	var sheetInfo []string
+	for _, sheetName := range sheetNames {
+		rows, err := xlsxFile.GetRows(sheetName)
+		if err != nil {
+			continue
+		}
+		rowCount := len(rows)
+		totalRows += rowCount
+		sheetInfo = append(sheetInfo, fmt.Sprintf("%s (%d rows)", sheetName, rowCount))
+	}
+
+	return totalRows, sheetInfo, nil
+}
+
 // GetRangeUnit returns the unit type that this parser uses for ranges.
-func (p *Parser) GetRangeUnit() string {
-	return "rows"
+func (p *Parser) GetRangeUnit() parser.RangeUnit {
+	return parser.RangeUnitRows
 }
 
 // ParseRange extracts text from a specific row range in an XLSX file.

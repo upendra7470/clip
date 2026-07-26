@@ -29,7 +29,7 @@ func (e *CSVParserError) Unwrap() error {
 	return e.cause
 }
 
-// Parser implements the parser.Parser and parser.RangeParser interfaces for CSV files.
+// Parser implements the parser.Parser, parser.RangeParser, and parser.DocumentLister interfaces for CSV files.
 type Parser struct{}
 
 // NewParser creates a new CSV Parser instance.
@@ -111,9 +111,40 @@ func (p *Parser) FileType() filetype.FileType {
 	return filetype.FileTypeCSV
 }
 
+// ListUnits implements the parser.DocumentLister interface for CSV files.
+func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
+	// Read the file content
+	content, err := os.ReadFile(req.File)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		}
+		if os.IsPermission(err) {
+			return 0, nil, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\npermission denied", err)
+		}
+		return 0, nil, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+	}
+
+	// Parse CSV content
+	reader := csv.NewReader(strings.NewReader(string(content)))
+	records, err := reader.ReadAll()
+	if err != nil {
+		return 0, nil, wrapError("failed to parse CSV", err)
+	}
+
+	// Return row count and row numbers as unit names
+	rowCount := len(records)
+	var rowNumbers []string
+	for i := 0; i < rowCount; i++ {
+		rowNumbers = append(rowNumbers, fmt.Sprintf("Row %d", i+1))
+	}
+
+	return rowCount, rowNumbers, nil
+}
+
 // GetRangeUnit returns the unit type that this parser uses for ranges.
-func (p *Parser) GetRangeUnit() string {
-	return "rows"
+func (p *Parser) GetRangeUnit() parser.RangeUnit {
+	return parser.RangeUnitRows
 }
 
 // ParseRange extracts text from a specific row range in a CSV file.

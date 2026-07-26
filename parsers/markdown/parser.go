@@ -83,8 +83,8 @@ func (p *Parser) FileType() filetype.FileType {
 }
 
 // GetRangeUnit returns the unit type that this parser uses for ranges.
-func (p *Parser) GetRangeUnit() string {
-	return "sections"
+func (p *Parser) GetRangeUnit() parser.RangeUnit {
+	return parser.RangeUnitSections
 }
 
 // ParseRange extracts text from a specific section range in a Markdown file.

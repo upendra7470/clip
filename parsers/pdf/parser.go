@@ -1,10 +1,13 @@
 package pdf
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/ledongthuc/pdf"
@@ -12,7 +15,7 @@ import (
 	"github.com/upendra7470/clip/internal/parser"
 )
 
-// Parser implements the parser.Parser and parser.RangeParser interfaces for PDF files.
+// Parser implements the parser.Parser, parser.RangeParser, and parser.DocumentLister interfaces for PDF files.
 type Parser struct{}
 
 // NewParser creates a new PDF Parser instance.
@@ -30,7 +33,8 @@ func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
 	return &parser.DocumentUnit{
 		Text: string(text),
 		Meta: map[string]interface{}{
-			"type": "pdf",
+			"type":                "pdf",
+			"preserved_structure": "page boundaries",
 		},
 	}, nil
 }
@@ -184,9 +188,86 @@ func (p *Parser) FileType() filetype.FileType {
 	return filetype.FileTypePDF
 }
 
+// ListUnits implements the parser.DocumentLister interface for PDF files.
+func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
+	// Open the PDF file
+	file, err := os.Open(req.File)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil, wrapError("Could not open PDF file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		}
+		if os.IsPermission(err) {
+			return 0, nil, wrapError("Could not open PDF file:\n"+req.File+"\n\nReason:\npermission denied", err)
+		}
+		return 0, nil, wrapError("Could not open PDF file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+	}
+	defer file.Close()
+
+	// Get file info for size
+	_, err = file.Stat()
+	if err != nil {
+		return 0, nil, wrapError("failed to get file info", err)
+	}
+
+	// Read the PDF content
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return 0, nil, wrapError("failed to read PDF content", err)
+	}
+
+	// Use pdfcpu to get page count and titles
+	cmd := exec.Command("pdfcpu", "info", req.File)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Fallback to simple page count if pdfcpu is not available
+		// This is a simplified approach - a real implementation would use a proper PDF library
+		pageCount := countPDFPages(content)
+		return pageCount, nil, nil
+	}
+
+	// Parse pdfcpu output to get page count and titles
+	pageCount, pageTitles, err := parsePDFCPUInfo(string(output))
+	if err != nil {
+		return 0, nil, wrapError("failed to parse PDF information", err)
+	}
+
+	return pageCount, pageTitles, nil
+}
+
+// countPDFPages counts the number of pages in a PDF file by looking for the /Page object.
+func countPDFPages(content []byte) int {
+	// This is a simplified approach - a real implementation would use a proper PDF library
+	// Count occurrences of "/Page" in the PDF content
+	return bytes.Count(content, []byte("/Page"))
+}
+
+// parsePDFCPUInfo parses the output of pdfcpu info command to extract page count and titles.
+func parsePDFCPUInfo(output string) (int, []string, error) {
+	// This is a simplified parser - a real implementation would use a proper PDF library
+	// Look for "Pages:" line to get page count
+	pageCount := 0
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "Pages:") {
+			parts := strings.Split(line, ":")
+			if len(parts) > 1 {
+				count, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+				if err == nil {
+					pageCount = count
+				}
+			}
+		}
+	}
+
+	// For page titles, we would need to parse the PDF's bookmarks or document info
+	// This is a simplified approach that just returns empty titles
+	pageTitles := make([]string, pageCount)
+	return pageCount, pageTitles, nil
+}
+
 // GetRangeUnit returns the unit type that this parser uses for ranges.
-func (p *Parser) GetRangeUnit() string {
-	return "pages"
+func (p *Parser) GetRangeUnit() parser.RangeUnit {
+	return parser.RangeUnitPages
 }
 
 // wrapError wraps an error with additional context.

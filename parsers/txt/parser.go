@@ -29,7 +29,7 @@ func (e *TextParserError) Unwrap() error {
 	return e.cause
 }
 
-// Parser implements the parser.Parser and parser.RangeParser interfaces for plain text files.
+// Parser implements the parser.Parser, parser.RangeParser, and parser.DocumentLister interfaces for plain text files.
 type Parser struct{}
 
 // Parse implements the parser.Parser interface method for reading from io.Reader
@@ -96,9 +96,36 @@ func (p *Parser) FileType() filetype.FileType {
 	return filetype.FileTypeTXT
 }
 
+// ListUnits implements the parser.DocumentLister interface for TXT files.
+func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
+	// Read the file content
+	content, err := os.ReadFile(req.File)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		}
+		if os.IsPermission(err) {
+			return 0, nil, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\npermission denied", err)
+		}
+		return 0, nil, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+	}
+
+	// Split content into lines
+	lines := strings.Split(string(content), "\n")
+	lineCount := len(lines)
+
+	// Return line numbers as unit names
+	var lineNumbers []string
+	for i := 0; i < lineCount; i++ {
+		lineNumbers = append(lineNumbers, fmt.Sprintf("Line %d", i+1))
+	}
+
+	return lineCount, lineNumbers, nil
+}
+
 // GetRangeUnit returns the unit type that this parser uses for ranges.
-func (p *Parser) GetRangeUnit() string {
-	return "lines"
+func (p *Parser) GetRangeUnit() parser.RangeUnit {
+	return parser.RangeUnitLines
 }
 
 // ParseRange extracts text from a specific line range in a text file.

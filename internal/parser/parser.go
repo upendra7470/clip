@@ -38,10 +38,39 @@ type ParseResult struct {
 	Text string
 }
 
+// RangeUnit represents the unit of measurement for range extraction
+type RangeUnit string
+
+const (
+	// RangeUnitPages represents page-based ranges (PDF)
+	RangeUnitPages RangeUnit = "pages"
+	// RangeUnitSections represents section-based ranges (DOCX, Markdown, HTML)
+	RangeUnitSections RangeUnit = "sections"
+	// RangeUnitSlides represents slide-based ranges (PPT, PPTX)
+	RangeUnitSlides RangeUnit = "slides"
+	// RangeUnitRows represents row-based ranges (XLSX, ODS, CSV)
+	RangeUnitRows RangeUnit = "rows"
+	// RangeUnitLines represents line-based ranges (TXT)
+	RangeUnitLines RangeUnit = "lines"
+	// RangeUnitParagraphs represents paragraph-based ranges (ODT, RTF)
+	RangeUnitParagraphs RangeUnit = "paragraphs"
+	// RangeUnitEntries represents entry-based ranges (JSON, XML)
+	RangeUnitEntries RangeUnit = "entries"
+	// RangeUnitValues represents value-based ranges (YAML)
+	RangeUnitValues RangeUnit = "values"
+)
+
 // RangeParser interface defines the contract for parsers that support range-based parsing
 type RangeParser interface {
 	ParseRange(ctx context.Context, req ParseRequest, start, end int) (ParseResult, error)
-	GetRangeUnit() string
+	GetRangeUnit() RangeUnit
+}
+
+// DocumentLister interface defines the contract for parsers that can list
+// the document units (pages, sections, slides, etc.) available in a document.
+type DocumentLister interface {
+	// ListUnits returns the total number of units and the names/titles of each unit.
+	ListUnits(ctx context.Context, req ParseRequest) (total int, unitNames []string, err error)
 }
 
 type Parser interface {

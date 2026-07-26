@@ -67,7 +67,7 @@ Row 3`
 
 	// Test GetRangeUnit
 	t.Run("GetRangeUnit", func(t *testing.T) {
-		assert.Equal(t, "rows", xlsxParser.GetRangeUnit())
+		assert.Equal(t, parser.RangeUnit("rows"), xlsxParser.GetRangeUnit())
 	})
 
 	// Test ParseDirectory

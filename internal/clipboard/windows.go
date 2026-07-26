@@ -6,14 +6,14 @@ import (
 	"os/exec"
 )
 
-// copyImpl is the platform-specific implementation for windows.
-func copyImpl(text string) error {
+// copyPlatform is the platform-specific implementation for windows.
+func copyPlatform(text string) error {
 	return copyWindows(text)
 }
 
 // copyWindows copies text to the clipboard on Windows using clip.exe.
 func copyWindows(text string) error {
-	cmd := exec.Command("clip")
+	cmd := exec.Command("cmd", "/c", "clip")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return wrapError("Windows clipboard unavailable", err)

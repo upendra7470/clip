@@ -96,8 +96,8 @@ func (p *Parser) FileType() filetype.FileType {
 }
 
 // GetRangeUnit returns the unit type that this parser uses for ranges.
-func (p *Parser) GetRangeUnit() string {
-	return "rows"
+func (p *Parser) GetRangeUnit() parser.RangeUnit {
+	return parser.RangeUnitRows
 }
 
 // ParseRange extracts text from a specific row range in an ODS file.

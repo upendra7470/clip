@@ -69,7 +69,7 @@ Bob,40,Manager`
 
 	// Test GetRangeUnit
 	t.Run("GetRangeUnit", func(t *testing.T) {
-		assert.Equal(t, "rows", csvParser.GetRangeUnit())
+		assert.Equal(t, parser.RangeUnit("rows"), csvParser.GetRangeUnit())
 	})
 
 	// Test ParseDirectory

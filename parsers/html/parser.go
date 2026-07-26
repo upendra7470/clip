@@ -107,8 +107,8 @@ func (p *Parser) FileType() filetype.FileType {
 }
 
 // GetRangeUnit returns the unit type that this parser uses for ranges.
-func (p *Parser) GetRangeUnit() string {
-	return string(parser.Sections)
+func (p *Parser) GetRangeUnit() parser.RangeUnit {
+	return parser.RangeUnitSections
 }
 
 // ParseRange extracts text from a specific text block range in an HTML file.

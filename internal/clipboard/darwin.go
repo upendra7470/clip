@@ -6,8 +6,8 @@ import (
 	"os/exec"
 )
 
-// copyImpl is the platform-specific implementation for darwin.
-func copyImpl(text string) error {
+// copyPlatform is the platform-specific implementation for darwin.
+func copyPlatform(text string) error {
 	return copyDarwin(text)
 }
 

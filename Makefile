@@ -16,9 +16,9 @@ build:
 install:
 	@echo "Installing Clip globally..."
 	@go build -o clip ./cmd/clip
-	@sudo mkdir -p /usr/local/bin
-	@sudo cp clip /usr/local/bin/clip
-	@sudo chmod +x /usr/local/bin/clip
+	@sudo mkdir -p $HOME/.local/bin
+	@sudo cp clip $HOME/.local/bin/clip
+	@sudo chmod +x $HOME/.local/bin/clip
 	@rm clip
 	@echo "✓ Installed: /usr/local/bin/clip"
 	@echo "✓ You can now run 'clip' from anywhere"
@@ -26,7 +26,7 @@ install:
 # Uninstall Clip
 uninstall:
 	@echo "Uninstalling Clip..."
-	@sudo rm -f /usr/local/bin/clip
+	@sudo rm -f $HOME/.local/bin/clip
 	@echo "✓ Uninstalled Clip"
 
 # Clean build artifacts

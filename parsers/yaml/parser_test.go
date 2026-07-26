@@ -70,7 +70,7 @@ func TestFileType(t *testing.T) {
 
 func TestGetRangeUnit(t *testing.T) {
 	p := &Parser{}
-	want := string(parser.Values)
+	want := parser.RangeUnit("values")
 
 	if got := p.GetRangeUnit(); got != want {
 		t.Errorf("GetRangeUnit() = %q, want %q", got, want)
