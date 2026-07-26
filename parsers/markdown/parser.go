@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -158,7 +159,7 @@ func (p *Parser) ExtractStructured(content string, start, end int) (string, erro
 	var result strings.Builder
 	for i := start - 1; i < end && i < len(blocks); i++ {
 		if i > start-1 {
-			result.WriteString("\n\n")
+			result.WriteString("\n")
 		}
 		result.WriteString(blocks[i])
 	}
@@ -309,4 +310,5 @@ func wrapError(message string, err error) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", message, err)
 	}
-	return fmt.Errorf(message)
+	return errors.New(message)
+}

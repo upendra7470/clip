@@ -40,6 +40,27 @@ func (m *mockParser) FileType() filetype.FileType {
 	return m.fileType
 }
 
+func (m *mockParser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) {
+	return nil, errors.New("ParseDirectory not implemented in mock")
+}
+
+func (m *mockParser) ParseFile(path string) (*parser.DocumentUnit, error) {
+	return &parser.DocumentUnit{
+		Text: m.content,
+		Meta: map[string]interface{}{
+			"path": path,
+			"type": string(m.fileType),
+		},
+	}, nil
+}
+
+func (m *mockParser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
+	if m.err != nil {
+		return parser.ParseResult{}, m.err
+	}
+	return parser.ParseResult{Text: m.content}, nil
+}
+
 func TestExtractSuccess(t *testing.T) {
 	// Create registry with mock parser
 	reg := registry.New()

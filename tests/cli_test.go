@@ -516,8 +516,8 @@ Content for line 3`
 	}
 	defer os.Remove(testFile)
 
-	// Test range extraction (lines 3-5)
-	cmd = exec.Command("./clip", testFile, "3-5")
+	// Test range extraction (sections 1-2)
+	cmd = exec.Command("./clip", testFile, "1-2")
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("Markdown range extraction failed: %v\n%s", err, output)
@@ -528,8 +528,8 @@ Content for line 3`
 	if !contains(outputStr, "✓ Found:") {
 		t.Errorf("Output should contain '✓ Found:', got: %s", outputStr)
 	}
-	if !contains(outputStr, "✓ Extracted blocks 3-5 successfully") {
-		t.Errorf("Output should contain '✓ Extracted blocks 3-5 successfully', got: %s", outputStr)
+	if !contains(outputStr, "✓ Extracted sections 1-2 successfully") {
+		t.Errorf("Output should contain '✓ Extracted sections 1-2 successfully', got: %s", outputStr)
 	}
 	if !contains(outputStr, "✓ Copied to clipboard") {
 		t.Errorf("Output should contain '✓ Copied to clipboard', got: %s", outputStr)
@@ -880,8 +880,8 @@ func TestCLISmartFilenameResolutionWithRange(t *testing.T) {
 					t.Errorf("Output should contain '✓ Found:' for %q with range %q, got: %s", tc.query, tc.rangeArg, outputStr)
 				}
 				if tc.rangeArg != "" {
-					if !contains(outputStr, "✓ Extracted paragraphs 1-3 successfully") {
-						t.Errorf("Output should contain '✓ Extracted paragraphs 1-3 successfully' for %q with range %q, got: %s", tc.query, tc.rangeArg, outputStr)
+					if !contains(outputStr, "✓ Extracted sections 1-3 successfully") {
+						t.Errorf("Output should contain '✓ Extracted sections 1-3 successfully' for %q with range %q, got: %s", tc.query, tc.rangeArg, outputStr)
 					}
 				} else {
 					if !contains(outputStr, "✓ Extracted text successfully") {

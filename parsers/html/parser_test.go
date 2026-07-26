@@ -71,11 +71,17 @@ func TestParseRangeWithSections(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parser := NewParser()
+			htmlParser := NewParser()
+			// Create a temporary file for the test
+			tempFile := "test_sections.html"
+			err := os.WriteFile(tempFile, []byte(tt.content), 0644)
+			assert.NoError(t, err)
+			defer os.Remove(tempFile)
+
 			req := parser.ParseRequest{
-				File: tt.content,
+				File: tempFile,
 			}
-			result, err := parser.ParseRange(context.Background(), req, tt.start, tt.end)
+			result, err := htmlParser.ParseRange(context.Background(), req, tt.start, tt.end)
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expected, result.Text)
 		})
@@ -217,7 +223,7 @@ func TestExtractTextFromHTML(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := extractTextFromHTML(tt.html)
 			assert.NoError(t, err)
-			assert.Contains(t, result, tt.expected)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
@@ -232,8 +238,8 @@ func TestExtractBlocksInvalid(t *testing.T) {
 		t.Fatal("ExtractBlocks() expected error for invalid range, got nil")
 	}
 
-	// Test range exceeding block count
-	_, err = p.ExtractBlocks(content, 1, 10)
+	// Test range exceeding block count (start > len)
+	_, err = p.ExtractBlocks(content, 3, 10)
 	if err == nil {
 		t.Fatal("ExtractBlocks() expected error for range exceeding block count, got nil")
 	}

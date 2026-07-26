@@ -89,6 +89,33 @@ func TestParseInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestParseMalformedJSON(t *testing.T) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "malformed.json")
+
+	// Create file with malformed JSON
+	malformedContent := []byte(`{ "name": "Sai" "age": 19 }`) // Missing comma
+	err := os.WriteFile(filePath, malformedContent, 0644)
+	if err != nil {
+		t.Fatalf("Failed to create malformed JSON test file: %v", err)
+	}
+
+	p := &Parser{}
+	req := parser.ParseRequest{
+		File: filePath,
+	}
+
+	_, err = p.ParseWithContext(context.Background(), req)
+
+	if err == nil {
+		t.Fatal("Parse() expected error for malformed JSON, got nil")
+	}
+
+	if !containsError(err.Error(), "invalid JSON syntax") {
+		t.Errorf("Parse() error = %q, want to contain 'invalid JSON syntax'", err.Error())
+	}
+}
+
 func TestParseSimpleObject(t *testing.T) {
 	tempDir := t.TempDir()
 	filePath := filepath.Join(tempDir, "simple.json")
@@ -256,6 +283,38 @@ func TestParseUnicodeContent(t *testing.T) {
 	}
 }
 
+func TestParseComplexUnicode(t *testing.T) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "complex_unicode.json")
+
+	// Create JSON with complex Unicode content
+	content := []byte(`{
+  "title": "Complex Unicode Test",
+  "description": "Testing various Unicode characters: \u0041\u030A (Å), \u03A9 (Ω), \uD83D\uDE00 (😀), \uD83D\uDC4D (👍)"
+}`)
+	err := os.WriteFile(filePath, content, 0644)
+	if err != nil {
+		t.Fatalf("Failed to create complex Unicode JSON test file: %v", err)
+	}
+
+	p := &Parser{}
+	req := parser.ParseRequest{
+		File: filePath,
+	}
+
+	result, err := p.ParseWithContext(context.Background(), req)
+
+	if err != nil {
+		t.Fatalf("Parse() unexpected error: %v", err)
+	}
+
+	// Check that complex Unicode content is preserved
+	expectedContent := "Testing various Unicode characters: Å (Å), Ω (Ω), 😀 (😀), 👍 (👍)"
+	if !strings.Contains(result.Text, expectedContent) {
+		t.Errorf("Parse() result missing complex Unicode content: %q", result.Text)
+	}
+}
+
 func TestParseBooleanAndNull(t *testing.T) {
 	tempDir := t.TempDir()
 	filePath := filepath.Join(tempDir, "booleans.json")
@@ -302,6 +361,56 @@ func TestParseBooleanAndNull(t *testing.T) {
 	}
 }
 
+func TestParseEdgeCases(t *testing.T) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "edge_cases.json")
+
+	// Create JSON with edge cases
+	content := []byte(`{
+  "empty_string": "",
+  "whitespace_string": "   ",
+  "number": 0,
+  "negative_number": -0,
+  "large_number": 99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999,
+  "negative_large_number": -99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999
+}`)
+	err := os.WriteFile(filePath, content, 0644)
+	if err != nil {
+		t.Fatalf("Failed to create edge cases JSON test file: %v", err)
+	}
+
+	p := &Parser{}
+	req := parser.ParseRequest{
+		File: filePath,
+	}
+
+	result, err := p.ParseWithContext(context.Background(), req)
+
+	if err != nil {
+		t.Fatalf("Parse() unexpected error: %v", err)
+	}
+
+	// Check that edge cases are handled correctly
+	if !strings.Contains(result.Text, "") {
+		t.Errorf("Parse() result missing empty string: %q", result.Text)
+	}
+	if !strings.Contains(result.Text, "   ") {
+		t.Errorf("Parse() result missing whitespace string: %q", result.Text)
+	}
+	if !strings.Contains(result.Text, "0") {
+		t.Errorf("Parse() result missing number: %q", result.Text)
+	}
+	if !strings.Contains(result.Text, "-0") {
+		t.Errorf("Parse() result missing negative number: %q", result.Text)
+	}
+	if !strings.Contains(result.Text, "99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999") {
+		t.Errorf("Parse() result missing large number: %q", result.Text)
+	}
+	if !strings.Contains(result.Text, "-99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999") {
+		t.Errorf("Parse() result missing negative large number: %q", result.Text)
+	}
+}
+
 func TestParseNumbers(t *testing.T) {
 	tempDir := t.TempDir()
 	filePath := filepath.Join(tempDir, "numbers.json")
@@ -345,6 +454,52 @@ func TestParseNumbers(t *testing.T) {
 
 	// Check that keys are NOT present
 	unexpectedKeys := []string{"age:", "price:", "quantity:", "temperature:"}
+	for _, key := range unexpectedKeys {
+		if strings.Contains(result.Text, key) {
+			t.Errorf("Parse() result should not contain keys %q: %q", key, result.Text)
+		}
+	}
+}
+
+func TestParseScientificNotation(t *testing.T) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "scientific.json")
+
+	// Create JSON with scientific notation
+	content := []byte(`{
+  "small": 1.23e-5,
+  "large": 9.87e+10,
+  "negative": -3.14e-2
+}`)
+	err := os.WriteFile(filePath, content, 0644)
+	if err != nil {
+		t.Fatalf("Failed to create scientific notation JSON test file: %v", err)
+	}
+
+	p := &Parser{}
+	req := parser.ParseRequest{
+		File: filePath,
+	}
+
+	result, err := p.ParseWithContext(context.Background(), req)
+
+	if err != nil {
+		t.Fatalf("Parse() unexpected error: %v", err)
+	}
+
+	// Check that scientific notation values are present (values only, no keys)
+	if !strings.Contains(result.Text, "1.23e-5") {
+		t.Errorf("Parse() result missing '1.23e-5': %q", result.Text)
+	}
+	if !strings.Contains(result.Text, "9.87e+10") {
+		t.Errorf("Parse() result missing '9.87e+10': %q", result.Text)
+	}
+	if !strings.Contains(result.Text, "-3.14e-2") {
+		t.Errorf("Parse() result missing '-3.14e-2': %q", result.Text)
+	}
+
+	// Check that keys are NOT present
+	unexpectedKeys := []string{"small:", "large:", "negative:"}
 	for _, key := range unexpectedKeys {
 		if strings.Contains(result.Text, key) {
 			t.Errorf("Parse() result should not contain keys %q: %q", key, result.Text)

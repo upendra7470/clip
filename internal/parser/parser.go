@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/upendra7470/clip/internal/filetype"
 )
 
 // Parser interface defines the contract for all parsers
@@ -43,14 +45,10 @@ type RangeParser interface {
 }
 
 type Parser interface {
-	// Parse parses the given reader and returns a DocumentUnit
-	Parse(io.Reader) (*DocumentUnit, error)
-	// ParseFile parses the given file and returns a DocumentUnit
-	ParseFile(string) (*DocumentUnit, error)
-	// ParseDirectory parses all files in the given directory and returns a slice of DocumentUnits
-	ParseDirectory(string) ([]*DocumentUnit, error)
-	// ParseWithContext parses with context and request
 	ParseWithContext(ctx context.Context, req ParseRequest) (ParseResult, error)
+	ParseFile(path string) (*DocumentUnit, error)
+	ParseDirectory(dirPath string) ([]*DocumentUnit, error)
+	FileType() filetype.FileType
 }
 
 // DocumentUnit represents a parsed document unit

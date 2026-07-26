@@ -241,12 +241,16 @@ func extractTextFromHTML(html string) (string, error) {
 			// Check if current buffer has actual text content
 			currentBufferHasContent := strings.TrimSpace(buffer.String()) != ""
 
+			// If we need a newline before the next block and this is an opening block element,
+			// add the newline directly to the result (even if buffer is empty)
+			if needNewlineBeforeNextBlock && !isClosingTag && isBlockElementByName(tagName) {
+				result.WriteString("\n\n")
+				needNewlineBeforeNextBlock = false
+			}
+
 			// Flush buffer if we have content (before updating lastBlockElement)
 			if buffer.Len() > 0 {
-				// Add newline if we need one before this block's content
-				shouldAddNewline := needNewlineBeforeNextBlock && isBlockElementByName(tagName) && !isClosingTag
-				flushBuffer(&result, &buffer, shouldAddNewline)
-				needNewlineBeforeNextBlock = false // Reset after adding newline
+				flushBuffer(&result, &buffer, false)
 			}
 
 			if !isClosingTag {
@@ -400,11 +404,8 @@ func (p *Parser) ExtractBlocks(content string, start, end int) (string, error) {
 	if end < start {
 		return "", fmt.Errorf("invalid block range: start must not be greater than end (got %d-%d)", start, end)
 	}
-	if start > len(blocks) {
-		return "", nil // Out of range returns empty
-	}
-	if end > len(blocks) {
-		end = len(blocks)
+	if start > len(blocks) || end > len(blocks) {
+		return "", fmt.Errorf("requested block range exceeds content (content has %d blocks, requested %d-%d)", len(blocks), start, end)
 	}
 
 	var result strings.Builder

@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/upendra7470/clip/internal/filetype"
@@ -19,6 +20,24 @@ func (m *mockParser) Parse(ctx context.Context, req parser.ParseRequest) (parser
 
 func (m *mockParser) FileType() filetype.FileType {
 	return m.fileType
+}
+
+func (m *mockParser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockParser) ParseFile(path string) (*parser.DocumentUnit, error) {
+	return &parser.DocumentUnit{
+		Text: "mock file content for " + path,
+		Meta: map[string]interface{}{
+			"path": path,
+			"type": string(m.fileType),
+		},
+	}, nil
+}
+
+func (m *mockParser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
+	return parser.ParseResult{Text: "mock result"}, nil
 }
 
 func TestRegistry(t *testing.T) {

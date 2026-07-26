@@ -12,6 +12,23 @@ import (
 	"github.com/upendra7470/clip/internal/parser"
 )
 
+// CSVParserError represents an error that occurs during CSV parsing.
+type CSVParserError struct {
+	message string
+	cause   error
+}
+
+func (e *CSVParserError) Error() string {
+	if e.message == "" {
+		return "CSV parser error"
+	}
+	return e.message
+}
+
+func (e *CSVParserError) Unwrap() error {
+	return e.cause
+}
+
 // Parser implements the parser.Parser and parser.RangeParser interfaces for CSV files.
 type Parser struct{}
 
@@ -20,8 +37,7 @@ func NewParser() *Parser {
 	return &Parser{}
 }
 
-// Parse reads a CSV file and extracts text content.
-// It uses the standard library encoding/csv package for parsing.
+// Parse reads a CSV file and extracts readable text representation.
 func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
 	text, err := io.ReadAll(reader)
 	if err != nil {
@@ -53,8 +69,8 @@ func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) 
 
 // ParseWithContext implements the parser.Parser interface method for parsing with context
 func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
-	// Open the CSV file
-	file, err := os.Open(req.File)
+	// Read the file content
+	content, err := os.ReadFile(req.File)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return parser.ParseResult{}, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
@@ -64,29 +80,25 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 		}
 		return parser.ParseResult{}, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
 	}
-	defer file.Close()
 
-	// Create CSV reader
-	csvReader := csv.NewReader(file)
-
-	// Read all records
+	// Parse CSV content
+	csvReader := csv.NewReader(strings.NewReader(string(content)))
 	records, err := csvReader.ReadAll()
 	if err != nil {
-		return parser.ParseResult{}, wrapError("failed to parse CSV", err)
+		return parser.ParseResult{}, wrapError("invalid CSV format", err)
 	}
 
-	if len(records) == 0 {
-		return parser.ParseResult{}, wrapError("no content found in CSV", nil)
-	}
-
-	// Convert CSV data to text format
+	// Extract readable text from CSV
 	var result strings.Builder
 	for i, record := range records {
 		if i > 0 {
 			result.WriteString("\n")
 		}
-		// Join fields with commas (preserve CSV structure)
 		result.WriteString(strings.Join(record, ", "))
+	}
+
+	if result.Len() == 0 {
+		return parser.ParseResult{}, wrapError("no readable content found in CSV", nil)
 	}
 
 	return parser.ParseResult{
@@ -114,8 +126,8 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid row range: start row must not be greater than end row (got %d-%d)", start, end), nil)
 	}
 
-	// Open the CSV file
-	file, err := os.Open(req.File)
+	// Read the file content
+	content, err := os.ReadFile(req.File)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return parser.ParseResult{}, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
@@ -125,33 +137,25 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 		}
 		return parser.ParseResult{}, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
 	}
-	defer file.Close()
 
-	// Create CSV reader
-	csvReader := csv.NewReader(file)
-
-	// Read all records
+	// Parse CSV content
+	csvReader := csv.NewReader(strings.NewReader(string(content)))
 	records, err := csvReader.ReadAll()
 	if err != nil {
-		return parser.ParseResult{}, wrapError("failed to parse CSV", err)
-	}
-
-	if len(records) == 0 {
-		return parser.ParseResult{}, wrapError("no content found in CSV", nil)
+		return parser.ParseResult{}, wrapError("invalid CSV format", err)
 	}
 
 	// Validate range against actual row count
 	if start > len(records) || end > len(records) {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested row range exceeds CSV row count (CSV has %d rows, requested %d-%d)", len(records), start, end), nil)
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested row range exceeds CSV row count (file has %d rows, requested %d-%d)", len(records), start, end), nil)
 	}
 
-	// Convert CSV data to text format for the requested row range
+	// Extract only the requested row range
 	var result strings.Builder
 	for i := start - 1; i < end && i < len(records); i++ {
 		if i > start-1 {
 			result.WriteString("\n")
 		}
-		// Join fields with commas (preserve CSV structure)
 		result.WriteString(strings.Join(records[i], ", "))
 	}
 
@@ -162,36 +166,6 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	return parser.ParseResult{
 		Text: result.String(),
 	}, nil
-}
-
-	// Parse the CSV content
-	reader := strings.NewReader(content)
-	csvReader := csv.NewReader(reader)
-	records, err := csvReader.ReadAll()
-	if err != nil {
-		return "", fmt.Errorf("failed to parse CSV: %w", err)
-	}
-
-	if start < 1 || end < 1 {
-		return "", fmt.Errorf("row numbers must start from 1, got %d-%d", start, end)
-	}
-	if end < start {
-		return "", fmt.Errorf("invalid row range: start must not be greater than end (got %d-%d)", start, end)
-	}
-	if start > len(records) || end > len(records) {
-		return "", fmt.Errorf("requested row range exceeds CSV row count (CSV has %d rows, requested %d-%d)", len(records), start, end)
-	}
-
-	var result strings.Builder
-	for i := start - 1; i < end && i < len(records); i++ {
-		if i > start-1 {
-			result.WriteString("\n")
-		}
-		// Join fields with commas (preserve CSV structure)
-		result.WriteString(strings.Join(records[i], ", "))
-	}
-
-	return result.String(), nil
 }
 
 // wrapError wraps an error with additional context.
@@ -206,21 +180,4 @@ func wrapError(message string, err error) error {
 		message: message,
 		cause:   err,
 	}
-}
-
-// CSVParserError represents an error that occurs during CSV parsing.
-type CSVParserError struct {
-	message string
-	cause   error
-}
-
-func (e *CSVParserError) Error() string {
-	if e.message == "" {
-		return "CSV parser error"
-	}
-	return e.message
-}
-
-func (e *CSVParserError) Unwrap() error {
-	return e.cause
 }

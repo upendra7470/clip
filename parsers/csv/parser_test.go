@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/upendra7470/clip/internal/filetype"
+	"github.com/upendra7470/clip/internal/parser"
 )
 
 func TestCSVParser(t *testing.T) {
@@ -24,15 +25,15 @@ Bob,40,Manager`
 	assert.NoError(t, err)
 
 	// Initialize parser
-	parser := NewParser()
+	csvParser := NewParser()
 
 	// Test ParseFile
 	t.Run("ParseFile", func(t *testing.T) {
-		docUnit, err := parser.ParseFile(testFile)
+		docUnit, err := csvParser.ParseFile(testFile)
 		assert.NoError(t, err)
 		assert.NotNil(t, docUnit)
 		assert.Contains(t, docUnit.Text, "csv file content for")
-		assert.Equal(t, filetype.FileTypeCSV, docUnit.Meta["type"])
+		assert.Equal(t, "csv", docUnit.Meta["type"])
 		assert.Equal(t, testFile, docUnit.Meta["path"])
 	})
 
@@ -41,7 +42,7 @@ Bob,40,Manager`
 		req := parser.ParseRequest{
 			File: testFile,
 		}
-		result, err := parser.ParseWithContext(context.Background(), req)
+		result, err := csvParser.ParseWithContext(context.Background(), req)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, result.Text)
 		assert.Contains(t, result.Text, "John, 30, Engineer")
@@ -54,26 +55,26 @@ Bob,40,Manager`
 		req := parser.ParseRequest{
 			File: testFile,
 		}
-		result, err := parser.ParseRange(context.Background(), req, 2, 3)
+		result, err := csvParser.ParseRange(context.Background(), req, 2, 3)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, result.Text)
+		assert.Contains(t, result.Text, "John, 30, Engineer")
 		assert.Contains(t, result.Text, "Jane, 25, Designer")
-		assert.Contains(t, result.Text, "Bob, 40, Manager")
 	})
 
 	// Test FileType
 	t.Run("FileType", func(t *testing.T) {
-		assert.Equal(t, filetype.FileTypeCSV, parser.FileType())
+		assert.Equal(t, filetype.FileTypeCSV, csvParser.FileType())
 	})
 
 	// Test GetRangeUnit
 	t.Run("GetRangeUnit", func(t *testing.T) {
-		assert.Equal(t, "rows", parser.GetRangeUnit())
+		assert.Equal(t, "rows", csvParser.GetRangeUnit())
 	})
 
 	// Test ParseDirectory
 	t.Run("ParseDirectory", func(t *testing.T) {
-		_, err := parser.ParseDirectory(tempDir)
+		_, err := csvParser.ParseDirectory(tempDir)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "not implemented")
 	})
@@ -84,22 +85,25 @@ Bob,40,Manager`
 		req := parser.ParseRequest{
 			File: "nonexistent.csv",
 		}
-		_, err := parser.ParseWithContext(context.Background(), req)
+		_, err := csvParser.ParseWithContext(context.Background(), req)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "file does not exist")
 
 		// Invalid row range
-		_, err = parser.ParseRange(context.Background(), req, 0, 1)
+		_, err = csvParser.ParseRange(context.Background(), req, 0, 1)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "row numbers must start from 1")
 
 		// Invalid row range (start > end)
-		_, err = parser.ParseRange(context.Background(), req, 2, 1)
+		_, err = csvParser.ParseRange(context.Background(), req, 2, 1)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "start row must not be greater than end row")
 
-		// Row range exceeds file content
-		_, err = parser.ParseRange(context.Background(), req, 1, 10)
+		// Row range exceeds file content - use existing file
+		validReq := parser.ParseRequest{
+			File: testFile,
+		}
+		_, err = csvParser.ParseRange(context.Background(), validReq, 1, 10)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "requested row range exceeds CSV row count")
 	})

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"testing"
+
+	"github.com/upendra7470/clip/internal/filetype"
 )
 
 type mockParser struct{}
@@ -38,6 +40,10 @@ func (m *mockParser) ParseDirectory(dirPath string) ([]*DocumentUnit, error) {
 
 func (m *mockParser) ParseWithContext(ctx context.Context, req ParseRequest) (ParseResult, error) {
 	return ParseResult{Text: "mock parsed text"}, nil
+}
+
+func (m *mockParser) FileType() filetype.FileType {
+	return filetype.FileType("mock")
 }
 
 func TestParseRequest(t *testing.T) {

@@ -29,6 +29,11 @@ func (e *JSONParserError) Unwrap() error {
 	return e.cause
 }
 
+// NewParser creates a new JSON Parser instance.
+func NewParser() *Parser {
+	return &Parser{}
+}
+
 // Parser implements the parser.Parser and parser.RangeParser interfaces for JSON files.
 type Parser struct{}
 
@@ -81,9 +86,11 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 		return parser.ParseResult{}, wrapError("empty JSON file", nil)
 	}
 
-	// Validate JSON syntax
+	// Validate JSON syntax and preserve number precision using UseNumber
 	var jsonData interface{}
-	if err := json.Unmarshal(content, &jsonData); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(string(content)))
+	decoder.UseNumber()
+	if err := decoder.Decode(&jsonData); err != nil {
 		return parser.ParseResult{}, wrapError("invalid JSON syntax", err)
 	}
 
@@ -155,10 +162,6 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("no content found in lines %d-%d", start, end), nil)
 	}
 
-	if text == "" {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("no readable content found in lines %d-%d", start, end), nil)
-	}
-
 	return parser.ParseResult{
 		Text: text,
 	}, nil
@@ -180,6 +183,11 @@ func extractTextFromJSON(data interface{}) string {
 				result.WriteString("\n")
 			}
 			result.WriteString(s)
+		} else if num, ok := v.(json.Number); ok {
+			if result.Len() > 0 {
+				result.WriteString("\n")
+			}
+			result.WriteString(num.String())
 		} else if num, ok := v.(float64); ok {
 			if result.Len() > 0 {
 				result.WriteString("\n")
@@ -203,7 +211,7 @@ func extractTextFromJSON(data interface{}) string {
 		}
 	}
 
-	return strings.TrimSpace(result.String())
+	return result.String()
 }
 
 // extractFromObject extracts text from JSON object (values only, no keys)
@@ -215,6 +223,11 @@ func extractFromObject(obj map[string]interface{}, result *strings.Builder) {
 				result.WriteString("\n")
 			}
 			result.WriteString(v)
+		case json.Number:
+			if result.Len() > 0 {
+				result.WriteString("\n")
+			}
+			result.WriteString(v.String())
 		case float64:
 			if result.Len() > 0 {
 				result.WriteString("\n")
@@ -263,6 +276,8 @@ func extractFromArray(arr []interface{}, result *strings.Builder) {
 		switch v := item.(type) {
 		case string:
 			result.WriteString(v)
+		case json.Number:
+			result.WriteString(v.String())
 		case float64:
 			// Handle numbers
 			if v == float64(int(v)) {
