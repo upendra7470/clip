@@ -206,18 +206,9 @@ func (p *Parser) GetRangeUnit() parser.RangeUnit {
 
 // ParseRange extracts text from a specific section range in a DOCX file. It preserves section boundaries and maintains the original document structure.
 func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
-	// Validate section range
-	if start < 1 || end < 1 {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("section numbers must start from 1, got %d-%d", start, end), nil)
-	}
-	if end < start {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid section range: start section must not be greater than end section (got %d-%d)", start, end), nil)
-	}
-
-	// Handle special range formats
-	if start == -1 {
-		start = 1 // Start from beginning
-	}
+	// Handle sentinel values BEFORE validation
+	// -1 means "from start" for start, or "to end" for end
+	// These will be normalized by the parser implementations
 
 	// Open the DOCX file (which is a ZIP archive)
 	file, err := os.Open(req.File)
@@ -277,9 +268,23 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	sections := detectSections(structuredParagraphs)
 	totalSections := len(sections)
 
-	// Handle special range formats
+	// Handle sentinel values
+	if start == -1 {
+		start = 1 // Start from beginning
+	}
 	if end == -1 {
 		end = totalSections // End at last section
+	}
+
+	// Validate section range
+	if start < 1 {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("section numbers must start from 1, got %d-%d", start, end), nil)
+	}
+	if end < 1 {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("section numbers must start from 1, got %d-%d", start, end), nil)
+	}
+	if end < start {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid section range: start section must not be greater than end section (got %d-%d)", start, end), nil)
 	}
 
 	// Validate range against actual section count

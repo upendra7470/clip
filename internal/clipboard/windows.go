@@ -3,7 +3,9 @@
 package clipboard
 
 import (
+	"context"
 	"os/exec"
+	"time"
 )
 
 // copyPlatform is the platform-specific implementation for windows.
@@ -13,7 +15,9 @@ func copyPlatform(text string) error {
 
 // copyWindows copies text to the clipboard on Windows using clip.exe.
 func copyWindows(text string) error {
-	cmd := exec.Command("cmd", "/c", "clip")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "cmd", "/c", "clip")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return wrapError("Windows clipboard unavailable", err)

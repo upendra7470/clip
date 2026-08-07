@@ -3,7 +3,9 @@
 package clipboard
 
 import (
+	"context"
 	"os/exec"
+	"time"
 )
 
 // copyPlatform is the platform-specific implementation for linux.
@@ -14,7 +16,9 @@ func copyPlatform(text string) error {
 // copyLinux copies text to the clipboard on Linux using xclip or wl-copy.
 func copyLinux(text string) error {
 	// Try xclip first (X11)
-	cmd := exec.Command("xclip", "-selection", "clipboard")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "xclip", "-selection", "clipboard")
 	stdin, err := cmd.StdinPipe()
 	if err == nil {
 		// xclip is available
@@ -39,7 +43,7 @@ func copyLinux(text string) error {
 	}
 
 	// Fall back to wl-copy (Wayland)
-	cmd = exec.Command("wl-copy")
+	cmd = exec.CommandContext(ctx, "wl-copy")
 	stdin, err = cmd.StdinPipe()
 	if err != nil {
 		return wrapError("Linux clipboard unavailable (neither xclip nor wl-copy found)", err)

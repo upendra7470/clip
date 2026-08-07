@@ -26,14 +26,28 @@ func ParseRange(rangeStr string) (Range, error) {
 			return Range{}, fmt.Errorf("invalid range: expected format like 5-10, got \"%s\"", trimmed)
 		}
 
-		start, err = strconv.Atoi(strings.TrimSpace(parts[0]))
-		if err != nil {
-			return Range{}, fmt.Errorf("invalid range: expected format like 5-10, got \"%s\"", trimmed)
+		// Handle open-ended ranges: "1-" or "-10"
+		startStr := strings.TrimSpace(parts[0])
+		endStr := strings.TrimSpace(parts[1])
+
+		if startStr == "" {
+			// "-10" format: start from beginning
+			start = -1
+		} else {
+			start, err = strconv.Atoi(startStr)
+			if err != nil {
+				return Range{}, fmt.Errorf("invalid range: expected format like 5-10, got \"%s\"", trimmed)
+			}
 		}
 
-		end, err = strconv.Atoi(strings.TrimSpace(parts[1]))
-		if err != nil {
-			return Range{}, fmt.Errorf("invalid range: expected format like 5-10, got \"%s\"", trimmed)
+		if endStr == "" {
+			// "1-" format: go to end
+			end = -1
+		} else {
+			end, err = strconv.Atoi(endStr)
+			if err != nil {
+				return Range{}, fmt.Errorf("invalid range: expected format like 5-10, got \"%s\"", trimmed)
+			}
 		}
 	} else if strings.Contains(trimmed, ":") {
 		// Format: "start:end"
@@ -60,14 +74,19 @@ func ParseRange(rangeStr string) (Range, error) {
 		end = start
 	}
 
-	// Validate range values
-	if start < 1 {
+	// Handle sentinel values BEFORE validation
+	// -1 means "from start" for start, or "to end" for end
+	// These will be normalized by the parser implementations
+
+	// Validate range values (only for non-sentinel values)
+	if start != -1 && start < 1 {
 		return Range{}, fmt.Errorf("range values must start from 1, got %d", start)
 	}
-	if end < 1 {
+	if end != -1 && end < 1 {
 		return Range{}, fmt.Errorf("range values must start from 1, got %d", end)
 	}
-	if start > end {
+	// Only validate start > end if both are non-sentinel
+	if start != -1 && end != -1 && start > end {
 		return Range{}, fmt.Errorf("invalid range: start value must not be greater than end value (got %d-%d)", start, end)
 	}
 

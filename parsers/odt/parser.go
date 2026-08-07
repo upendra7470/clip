@@ -147,13 +147,9 @@ func (p *Parser) GetRangeUnit() parser.RangeUnit {
 
 // ParseRange extracts text from a specific paragraph range in an ODT file.
 func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
-	// Validate paragraph range
-	if start < 1 || end < 1 {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("paragraph numbers must start from 1, got %d-%d", start, end), nil)
-	}
-	if end < start {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid paragraph range: start paragraph must not be greater than end paragraph (got %d-%d)", start, end), nil)
-	}
+	// Handle sentinel values BEFORE validation
+	// -1 means "from start" for start, or "to end" for end
+	// These will be normalized by the parser implementations
 
 	// Open the ODT file (which is a ZIP archive)
 	file, err := os.Open(req.File)
@@ -209,9 +205,31 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 		return parser.ParseResult{}, wrapError("failed to parse ODT XML", err)
 	}
 
+	// Handle sentinel values
+	if start == -1 {
+		start = 1 // Start from beginning
+	}
+	if end == -1 {
+		end = totalParagraphs // End at last paragraph
+	}
+
+	// Validate paragraph range
+	if start < 1 {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("paragraph numbers must start from 1, got %d-%d", start, end), nil)
+	}
+	if end < 1 {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("paragraph numbers must start from 1, got %d-%d", start, end), nil)
+	}
+	if end < start {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid paragraph range: start paragraph must not be greater than end paragraph (got %d-%d)", start, end), nil)
+	}
+
 	// Validate range against actual paragraph count
-	if start > totalParagraphs || end > totalParagraphs {
+	if start > totalParagraphs {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested paragraph range exceeds document paragraph count (document has %d paragraphs, requested %d-%d)", totalParagraphs, start, end), nil)
+	}
+	if end > totalParagraphs {
+		end = totalParagraphs // Adjust end to last paragraph if it exceeds
 	}
 
 	// Split text into paragraphs and extract requested range

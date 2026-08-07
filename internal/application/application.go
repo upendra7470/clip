@@ -40,6 +40,17 @@ func (app *Application) Extract(ctx context.Context, filePath string) error {
 // ExtractWithRange processes a document file with optional range through the complete pipeline:
 // detect → lookup parser → parse → copy to clipboard.
 func (app *Application) ExtractWithRange(ctx context.Context, filePath string, rangeObj *parser.Range) error {
+	// Step 0: Guard file size (prevent huge files)
+	if info, statErr := os.Stat(filePath); statErr == nil {
+		const maxSize int64 = 500 * 1024 * 1024 // 500 MiB
+		if info.Size() > maxSize {
+			return fmt.Errorf("file size %d bytes exceeds maximum allowed %d bytes", info.Size(), maxSize)
+		}
+	} else if !os.IsNotExist(statErr) && !os.IsPermission(statErr) {
+		// If we can't stat for other reasons, return the error
+		return fmt.Errorf("cannot stat file %s: %w", filePath, statErr)
+	}
+
 	// Step 1: Detect file type
 	fileType, err := detect.Type(filePath)
 	if err != nil {
@@ -69,52 +80,21 @@ func (app *Application) ExtractWithRange(ctx context.Context, filePath string, r
 	// Check if parser supports range extraction and if a range was requested
 	if rangeObj != nil {
 		if rangeParser, ok := parserObj.(parser.RangeParser); ok {
-			// Use range-specific parsing if available
-			var parseErr error
-			// Handle special range formats
 			start := rangeObj.Start
 			end := rangeObj.End
-
-			// If start is -1, it means "from start" (e.g., -10)
 			if start == -1 {
-				// Get total units to determine the actual start
-				// For now, we'll pass the range as-is and let the parser handle it
-				start = 1 // Start from beginning
+				start = 1 // start from the beginning
 			}
-
-			// If end is -1, it means "to end" (e.g., 5-)
-			if end == -1 {
-				// Get total units to determine the actual end
-				// For now, we'll pass the range as-is and let the parser handle it
-				// Use -1 to indicate "to end" to the parser
-				end = -1
-			}
-
-			// Get total units to determine the actual end
-			// For now, we'll pass the range as-is and let the parser handle it
-			// Use -1 to indicate "to end" to the parser
-			if end == -1 {
-				// Get total units to determine the actual end
-				// For now, we'll pass the range as-is and let the parser handle it
-				// Use -1 to indicate "to end" to the parser
-				end = -1
-			}
-
-			result, parseErr = rangeParser.ParseRange(ctx, req, start, end)
-			if parseErr != nil {
-				err = parseErr
+			// end == -1 is interpreted by the parser as "to end"
+			result, err = rangeParser.ParseRange(ctx, req, start, end)
+			if err != nil {
+				// keep err as is
 			}
 		} else {
-			// Parser doesn't support ranges - this should not happen for DOCX as it implements RangeParser
 			return fmt.Errorf("range extraction is not currently supported for %s files", fileType)
 		}
 	} else {
-		// Normal parsing (full document)
-		var parseErr error
-		result, parseErr = parserObj.ParseWithContext(ctx, req)
-		if parseErr != nil {
-			err = parseErr
-		}
+		result, err = parserObj.ParseWithContext(ctx, req)
 	}
 
 	if err != nil {

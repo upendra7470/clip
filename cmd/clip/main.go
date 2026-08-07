@@ -21,12 +21,16 @@ import (
 	"github.com/upendra7470/clip/parsers/html"
 	"github.com/upendra7470/clip/parsers/json"
 	"github.com/upendra7470/clip/parsers/markdown"
+	"github.com/upendra7470/clip/parsers/ods"
+	"github.com/upendra7470/clip/parsers/odt"
 	"github.com/upendra7470/clip/parsers/pdf"
 	"github.com/upendra7470/clip/parsers/ppt"
 	"github.com/upendra7470/clip/parsers/pptx"
+	"github.com/upendra7470/clip/parsers/rtf"
 	"github.com/upendra7470/clip/parsers/txt"
 	"github.com/upendra7470/clip/parsers/xlsx"
 	"github.com/upendra7470/clip/parsers/xml"
+	"github.com/upendra7470/clip/parsers/yaml"
 )
 
 const version = "1.0.0"
@@ -120,6 +124,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	// Register JSON parser
 	jsonParser := &json.Parser{}
+	if err := reg.Register(jsonParser.FileType(), jsonParser); err != nil {
+		fmt.Fprintf(stderr, "Failed to register JSON parser: %v\n", err)
+		return 1
+	}
 
 	// Register XML parser
 	xmlParser := &xml.Parser{}
@@ -135,8 +143,31 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	if err := reg.Register(jsonParser.FileType(), jsonParser); err != nil {
-		fmt.Fprintf(stderr, "Failed to register JSON parser: %v\n", err)
+	// Register YAML parser
+	yamlParser := &yaml.Parser{}
+	if err := reg.Register(yamlParser.FileType(), yamlParser); err != nil {
+		fmt.Fprintf(stderr, "Failed to register YAML parser: %v\n", err)
+		return 1
+	}
+
+	// Register ODT parser
+	odtParser := &odt.Parser{}
+	if err := reg.Register(odtParser.FileType(), odtParser); err != nil {
+		fmt.Fprintf(stderr, "Failed to register ODT parser: %v\n", err)
+		return 1
+	}
+
+	// Register ODS parser
+	odsParser := &ods.Parser{}
+	if err := reg.Register(odsParser.FileType(), odsParser); err != nil {
+		fmt.Fprintf(stderr, "Failed to register ODS parser: %v\n", err)
+		return 1
+	}
+
+	// Register RTF parser
+	rtfParser := &rtf.Parser{}
+	if err := reg.Register(rtfParser.FileType(), rtfParser); err != nil {
+		fmt.Fprintf(stderr, "Failed to register RTF parser: %v\n", err)
 		return 1
 	}
 
@@ -345,7 +376,7 @@ func showHelp() {
 	fmt.Println("Clip searches common locations when only a filename is provided.")
 	fmt.Println()
 	fmt.Println("Supported formats and their range units:")
-	fmt.Println("  DOCX      -> blocks")
+	fmt.Println("  DOCX      -> sections")
 	fmt.Println("  PPT/PPTX  -> slides")
 	fmt.Println("  ODT       -> paragraphs")
 	fmt.Println("  RTF       -> paragraphs")
@@ -357,7 +388,7 @@ func showHelp() {
 	fmt.Println("  JSON      -> entries")
 	fmt.Println("  XML       -> entries")
 	fmt.Println("  HTML      -> blocks")
-	fmt.Println("  YAML      -> extracted values")
+	fmt.Println("  YAML      -> values")
 	fmt.Println()
 	fmt.Println("Additional commands:")
 	fmt.Println("  clip --version")
@@ -398,7 +429,7 @@ func getFilePathAndRange() (string, string) {
 }
 
 // isRangeArgument checks if an argument looks like a range specification.
-// A valid range contains digits and optionally a dash (e.g., "5", "5-10").
+// A valid range contains digits and optionally a dash (e.g., "5", "5-10", "1-", "-10").
 func isRangeArgument(arg string) bool {
 	// Remove any quotes from the argument
 	arg = strings.Trim(arg, `"`)
@@ -416,5 +447,20 @@ func isRangeArgument(arg string) bool {
 	}
 
 	// Valid range: has digits, may have dashes, no other characters
-	return hasDigits && !hasOtherChars
+	// Also allow open-ended ranges like "1-" or "-10"
+	if hasDigits && !hasOtherChars {
+		return true
+	}
+
+	// Check for open-ended ranges: "1-" or "-10"
+	if strings.HasPrefix(arg, "-") || strings.HasSuffix(arg, "-") {
+		// Must have at least one digit
+		for _, c := range arg {
+			if c >= '0' && c <= '9' {
+				return true
+			}
+		}
+	}
+
+	return false
 }
