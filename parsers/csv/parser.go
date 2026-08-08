@@ -3,6 +3,7 @@ package csv
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -39,7 +40,8 @@ func NewParser() *Parser {
 
 // Parse reads a CSV file and extracts readable text representation.
 func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
-	text, err := io.ReadAll(reader)
+	limitedReader := io.LimitReader(reader, parser.MaxFileSize)
+	text, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read csv: %w", err)
 	}
@@ -72,13 +74,13 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 	// Read the file content
 	content, err := os.ReadFile(req.File)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return parser.ParseResult{}, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return parser.ParseResult{}, fmt.Errorf("file %s does not exist", req.File)
 		}
-		if os.IsPermission(err) {
-			return parser.ParseResult{}, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\npermission denied", err)
-		}
-		return parser.ParseResult{}, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+		return parser.ParseResult{}, fmt.Errorf("error reading file %s: %v", req.File, err)
+	}
+	if len(content) > parser.MaxFileSize {
+		return parser.ParseResult{}, fmt.Errorf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize)
 	}
 
 	// Parse CSV content
@@ -116,13 +118,13 @@ func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, [
 	// Read the file content
 	content, err := os.ReadFile(req.File)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, nil, fmt.Errorf("file %s does not exist", req.File)
 		}
-		if os.IsPermission(err) {
-			return 0, nil, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\npermission denied", err)
-		}
-		return 0, nil, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+		return 0, nil, fmt.Errorf("error reading file %s: %v", req.File, err)
+	}
+	if len(content) > parser.MaxFileSize {
+		return 0, nil, fmt.Errorf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize)
 	}
 
 	// Parse CSV content
@@ -160,13 +162,13 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	// Read the file content
 	content, err := os.ReadFile(req.File)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return parser.ParseResult{}, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return parser.ParseResult{}, fmt.Errorf("file %s does not exist", req.File)
 		}
-		if os.IsPermission(err) {
-			return parser.ParseResult{}, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\npermission denied", err)
-		}
-		return parser.ParseResult{}, wrapError("Could not open CSV file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+		return parser.ParseResult{}, fmt.Errorf("error reading file %s: %v", req.File, err)
+	}
+	if len(content) > parser.MaxFileSize {
+		return parser.ParseResult{}, fmt.Errorf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize)
 	}
 
 	// Parse CSV content

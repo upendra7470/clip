@@ -99,7 +99,8 @@ func ParseFile(path string) (*DocumentUnit, error) {
 	}
 	defer file.Close()
 
-	text, err := io.ReadAll(file)
+	limitedReader := io.LimitReader(file, MaxFileSize)
+	text, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}

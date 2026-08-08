@@ -39,7 +39,8 @@ func NewParser() *Parser {
 
 // Parse reads an ODS file and extracts readable text representation.
 func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
-	text, err := io.ReadAll(reader)
+	limitedReader := io.LimitReader(reader, parser.MaxFileSize)
+	text, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read ods: %w", err)
 	}
@@ -167,7 +168,8 @@ func readODSLines(path string) ([]string, error) {
 				if err != nil {
 					continue
 				}
-				data, err := io.ReadAll(rc)
+				limitedReader := io.LimitReader(rc, parser.MaxFileSize)
+				data, err := io.ReadAll(limitedReader)
 				rc.Close()
 				if err != nil {
 					continue
@@ -188,7 +190,8 @@ func readODSLines(path string) ([]string, error) {
 		return nil, wrapError("Could not open ODS file for fallback:\n"+path+"\n\nReason:\n"+err.Error(), err)
 	}
 	defer file.Close()
-	data, err := io.ReadAll(file)
+	limitedReader := io.LimitReader(file, parser.MaxFileSize)
+	data, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, wrapError("failed to read ODS file", err)
 	}

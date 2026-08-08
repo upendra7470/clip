@@ -2,6 +2,7 @@ package yaml
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -39,7 +40,8 @@ func NewParser() *Parser {
 
 // Parse reads a YAML file and extracts readable text representation.
 func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
-	text, err := io.ReadAll(reader)
+	limitedReader := io.LimitReader(reader, parser.MaxFileSize)
+	text, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read yaml: %w", err)
 	}
@@ -72,13 +74,13 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 	// Read the file content
 	content, err := os.ReadFile(req.File)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return parser.ParseResult{}, wrapError("Could not open YAML file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
 		}
-		if os.IsPermission(err) {
-			return parser.ParseResult{}, wrapError("Could not open YAML file:\n"+req.File+"\n\nReason:\npermission denied", err)
-		}
-		return parser.ParseResult{}, wrapError("Could not open YAML file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
+	}
+	if len(content) > parser.MaxFileSize {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize), nil)
 	}
 
 	// Check if file is empty
@@ -127,15 +129,20 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	// Read the file content
 	content, err := os.ReadFile(req.File)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return parser.ParseResult{}, wrapError("Could not open YAML file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
 		}
-		if os.IsPermission(err) {
-			return parser.ParseResult{}, wrapError("Could not open YAML file:\n"+req.File+"\n\nReason:\npermission denied", err)
-		}
-		return parser.ParseResult{}, wrapError("Could not open YAML file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
 	}
-
+	if len(content) > parser.MaxFileSize {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize), nil)
+	}
+	if os.IsNotExist(err) {
+		return parser.ParseResult{}, wrapError("Could not open YAML file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+	}
+	if os.IsPermission(err) {
+		return parser.ParseResult{}, wrapError("Could not open YAML file:\n"+req.File+"\n\nReason:\npermission denied", err)
+	}
 	// Check if file is empty
 	if len(content) == 0 {
 		return parser.ParseResult{}, wrapError("empty YAML file", nil)

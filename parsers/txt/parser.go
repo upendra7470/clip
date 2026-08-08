@@ -2,6 +2,7 @@ package txt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -34,7 +35,8 @@ type Parser struct{}
 
 // Parse implements the parser.Parser interface method for reading from io.Reader
 func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
-	text, err := io.ReadAll(reader)
+	limitedReader := io.LimitReader(reader, parser.MaxFileSize)
+	text, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read text: %w", err)
 	}
@@ -72,7 +74,8 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 	defer file.Close()
 
 	// Read the file content
-	content, err := io.ReadAll(file)
+	limitedReader := io.LimitReader(file, parser.MaxFileSize)
+	content, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return parser.ParseResult{}, wrapError("Could not open text file:\n"+req.File+"\n\nReason:\npermission denied", err)
 	}
@@ -101,13 +104,13 @@ func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, [
 	// Read the file content
 	content, err := os.ReadFile(req.File)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, nil, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
 		}
-		if os.IsPermission(err) {
-			return 0, nil, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\npermission denied", err)
-		}
-		return 0, nil, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+		return 0, nil, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
+	}
+	if len(content) > parser.MaxFileSize {
+		return 0, nil, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize), nil)
 	}
 
 	// Split content into lines
@@ -137,15 +140,20 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	// Read the entire file content
 	content, err := os.ReadFile(req.File)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return parser.ParseResult{}, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
 		}
-		if os.IsPermission(err) {
-			return parser.ParseResult{}, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\npermission denied", err)
-		}
-		return parser.ParseResult{}, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
 	}
-
+	if len(content) > parser.MaxFileSize {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize), nil)
+	}
+	if os.IsNotExist(err) {
+		return parser.ParseResult{}, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+	}
+	if os.IsPermission(err) {
+		return parser.ParseResult{}, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\npermission denied", err)
+	}
 	// Validate UTF-8
 	if !isValidUTF8(content) {
 		return parser.ParseResult{}, wrapError("invalid UTF-8", nil)

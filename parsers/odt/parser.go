@@ -42,7 +42,8 @@ func NewParser() *Parser {
 // ODT files are ZIP archives containing XML files.
 // This parser extracts text from content.xml <text:p> nodes.
 func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
-	text, err := io.ReadAll(reader)
+	limitedReader := io.LimitReader(reader, parser.MaxFileSize)
+	text, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read odt: %w", err)
 	}
@@ -107,7 +108,8 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 			}
 			defer rc.Close()
 
-			content, err := io.ReadAll(rc)
+			limitedReader := io.LimitReader(rc, parser.MaxFileSize)
+			content, err := io.ReadAll(limitedReader)
 			if err != nil {
 				return parser.ParseResult{}, wrapError("failed to read content.xml", err)
 			}
@@ -186,7 +188,8 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 			}
 			defer rc.Close()
 
-			content, err := io.ReadAll(rc)
+			limitedReader := io.LimitReader(rc, parser.MaxFileSize)
+			content, err := io.ReadAll(limitedReader)
 			if err != nil {
 				return parser.ParseResult{}, wrapError("failed to read content.xml", err)
 			}
@@ -257,6 +260,9 @@ func extractTextFromXML(xmlContent string) (string, error) {
 	var result strings.Builder
 
 	decoder := xml.NewDecoder(strings.NewReader(xmlContent))
+	// Harden XML decoder to prevent XXE and other XML attacks
+	decoder.Strict = true
+	decoder.Entity = map[string]string{}
 	var inParagraph bool
 	var currentText strings.Builder
 
@@ -303,6 +309,9 @@ func extractTextFromXMLWithParagraphs(xmlContent string) (string, int, error) {
 	var paragraphCount int
 
 	decoder := xml.NewDecoder(strings.NewReader(xmlContent))
+	// Harden XML decoder to prevent XXE and other XML attacks
+	decoder.Strict = true
+	decoder.Entity = map[string]string{}
 	var inParagraph bool
 	var currentText strings.Builder
 

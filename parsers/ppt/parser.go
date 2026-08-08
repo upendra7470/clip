@@ -3,6 +3,7 @@ package ppt
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -40,7 +41,8 @@ func NewParser() *Parser {
 
 // Parse reads a PPT file and extracts text content from slides.
 func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
-	text, err := io.ReadAll(reader)
+	limitedReader := io.LimitReader(reader, parser.MaxFileSize)
+	text, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read ppt: %w", err)
 	}
@@ -96,7 +98,13 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 	// Read the file content
 	fileContent, err := os.ReadFile(req.File)
 	if err != nil {
-		return parser.ParseResult{}, wrapError("failed to read PPT file", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
+		}
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
+	}
+	if len(fileContent) > parser.MaxFileSize {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize), nil)
 	}
 
 	// Create a reader from the content
@@ -171,9 +179,14 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	// Read the file content
 	fileContent, err := os.ReadFile(req.File)
 	if err != nil {
-		return parser.ParseResult{}, wrapError("failed to read PPT file", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
+		}
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
 	}
-
+	if len(fileContent) > parser.MaxFileSize {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize), nil)
+	}
 	// Create a reader from the content
 	reader := bytes.NewReader(fileContent)
 
@@ -232,7 +245,8 @@ func extractTextFromOLE(ole *mscfb.Reader, fileContent []byte) (string, error) {
 		// PPT files typically have streams with specific names
 		if entry.Name == "PowerPoint Document" || entry.Name == "Current User" ||
 			strings.Contains(entry.Name, "Slide") || strings.Contains(entry.Name, "Text") {
-			content, err := io.ReadAll(entry)
+			limitedReader := io.LimitReader(entry, parser.MaxFileSize)
+			content, err := io.ReadAll(limitedReader)
 			if err != nil {
 				continue // Skip streams we can't read
 			}
@@ -263,7 +277,8 @@ func extractTextFromOLE(ole *mscfb.Reader, fileContent []byte) (string, error) {
 				continue
 			}
 
-			content, err := io.ReadAll(entry)
+			limitedReader := io.LimitReader(entry, parser.MaxFileSize)
+			content, err := io.ReadAll(limitedReader)
 			if err != nil {
 				continue
 			}
@@ -377,7 +392,8 @@ func extractTextFromOLEWithSlides(ole *mscfb.Reader, fileContent []byte) (string
 		// PPT files typically have streams with specific names
 		if entry.Name == "PowerPoint Document" || entry.Name == "Current User" ||
 			strings.Contains(entry.Name, "Slide") || strings.Contains(entry.Name, "Text") {
-			content, err := io.ReadAll(entry)
+			limitedReader := io.LimitReader(entry, parser.MaxFileSize)
+			content, err := io.ReadAll(limitedReader)
 			if err != nil {
 				continue // Skip streams we can't read
 			}
@@ -408,7 +424,8 @@ func extractTextFromOLEWithSlides(ole *mscfb.Reader, fileContent []byte) (string
 				continue
 			}
 
-			content, err := io.ReadAll(entry)
+			limitedReader := io.LimitReader(entry, parser.MaxFileSize)
+			content, err := io.ReadAll(limitedReader)
 			if err != nil {
 				continue
 			}

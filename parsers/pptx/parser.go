@@ -43,7 +43,8 @@ func NewParser() *Parser {
 // PPTX files are ZIP archives containing XML files.
 // This parser extracts text from ppt/slides/slide*.xml <a:t> nodes.
 func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
-	text, err := io.ReadAll(reader)
+	limitedReader := io.LimitReader(reader, parser.MaxFileSize)
+	text, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read pptx: %w", err)
 	}
@@ -248,13 +249,17 @@ func extractTextFromSlide(slideFile *zip.File) (string, error) {
 	}
 	defer rc.Close()
 
-	content, err := io.ReadAll(rc)
+	limitedReader := io.LimitReader(rc, parser.MaxFileSize)
+	content, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return "", fmt.Errorf("failed to read slide content: %w", err)
 	}
 
 	var result strings.Builder
 	decoder := xml.NewDecoder(strings.NewReader(string(content)))
+	// Harden XML decoder to prevent XXE and other XML attacks
+	decoder.Strict = true
+	decoder.Entity = map[string]string{}
 	var inTextNode bool
 	var currentText strings.Builder
 

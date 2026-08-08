@@ -41,7 +41,8 @@ func NewParser() *Parser {
 
 // Parse reads an XLSX file and extracts readable text representation.
 func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
-	text, err := io.ReadAll(reader)
+	limitedReader := io.LimitReader(reader, parser.MaxFileSize)
+	text, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read xlsx: %w", err)
 	}
@@ -235,7 +236,8 @@ func readXLSXLines(path string) ([]string, error) {
 			if err != nil {
 				continue
 			}
-			data, err := io.ReadAll(rc)
+			limitedReader := io.LimitReader(rc, parser.MaxFileSize)
+			data, err := io.ReadAll(limitedReader)
 			rc.Close()
 			if err != nil {
 				continue
@@ -275,7 +277,8 @@ func readXLSXLines(path string) ([]string, error) {
 		return nil, wrapError("Could not open XLSX file for fallback:\n"+path+"\n\nReason:\n"+err.Error(), err)
 	}
 	defer file.Close()
-	data, err := io.ReadAll(file)
+	limitedReader := io.LimitReader(file, parser.MaxFileSize)
+	data, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, wrapError("failed to read XLSX file", err)
 	}
@@ -289,6 +292,9 @@ func readXLSXLines(path string) ([]string, error) {
 func parseXLSXSharedStrings(xmlContent string) []string {
 	var result []string
 	decoder := xml.NewDecoder(strings.NewReader(xmlContent))
+	// Harden XML decoder to prevent XXE and other XML attacks
+	decoder.Strict = true
+	decoder.Entity = map[string]string{}
 	var inSi bool
 	var currentText strings.Builder
 

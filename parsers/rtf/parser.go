@@ -40,7 +40,8 @@ func NewParser() *Parser {
 
 // Parse extracts plain text from an RTF file, ignoring formatting and control words.
 func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
-	text, err := io.ReadAll(reader)
+	limitedReader := io.LimitReader(reader, parser.MaxFileSize)
+	text, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read rtf: %w", err)
 	}
@@ -90,7 +91,13 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 	// Read the file content
 	content, err := os.ReadFile(req.File)
 	if err != nil {
-		return parser.ParseResult{}, wrapError("file cannot be read", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
+		}
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
+	}
+	if len(content) > parser.MaxFileSize {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize), nil)
 	}
 
 	// Validate UTF-8
@@ -153,9 +160,14 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	// Read the file content
 	content, err := os.ReadFile(req.File)
 	if err != nil {
-		return parser.ParseResult{}, wrapError("file cannot be read", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
+		}
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
 	}
-
+	if len(content) > parser.MaxFileSize {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize), nil)
+	}
 	// Validate UTF-8
 	if !isValidUTF8(content) {
 		return parser.ParseResult{}, wrapError("invalid UTF-8 content", nil)

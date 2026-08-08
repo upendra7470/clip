@@ -26,7 +26,8 @@ func NewParser() *Parser {
 // DOCX files are ZIP archives containing XML files.
 // This parser extracts text from word/document.xml <w:t> nodes.
 func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
-	text, err := io.ReadAll(reader)
+	limitedReader := io.LimitReader(reader, parser.MaxFileSize)
+	text, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read docx: %w", err)
 	}
@@ -90,10 +91,11 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 			if err != nil {
 				return parser.ParseResult{}, wrapError("failed to open document.xml", err)
 			}
-			defer rc.Close()
 
-			content, err := io.ReadAll(rc)
+			limitedReader := io.LimitReader(rc, parser.MaxFileSize)
+			content, err := io.ReadAll(limitedReader)
 			if err != nil {
+				rc.Close() // Close immediately after reading
 				return parser.ParseResult{}, wrapError("failed to read document.xml", err)
 			}
 			documentXML = string(content)
@@ -162,7 +164,8 @@ func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, [
 			}
 			defer rc.Close()
 
-			content, err := io.ReadAll(rc)
+			limitedReader := io.LimitReader(rc, parser.MaxFileSize)
+			content, err := io.ReadAll(limitedReader)
 			if err != nil {
 				return 0, nil, wrapError("failed to read document.xml", err)
 			}
@@ -245,7 +248,8 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 			}
 			defer rc.Close()
 
-			content, err := io.ReadAll(rc)
+			limitedReader := io.LimitReader(rc, parser.MaxFileSize)
+			content, err := io.ReadAll(limitedReader)
 			if err != nil {
 				return parser.ParseResult{}, wrapError("failed to read document.xml", err)
 			}
@@ -343,6 +347,9 @@ func extractParagraphsFromXML(xmlContent string) ([]string, int, error) {
 	var currentParagraph strings.Builder
 
 	decoder := xml.NewDecoder(strings.NewReader(xmlContent))
+	// Harden XML decoder to prevent XXE and other XML attacks
+	decoder.Strict = true
+	decoder.Entity = map[string]string{}
 	var inTextNode bool
 	var inParagraph bool
 	var currentText strings.Builder
@@ -475,6 +482,9 @@ func extractStructuredContentFromXML(xmlContent string, collectParagraphs bool) 
 	var currentParagraph strings.Builder
 
 	decoder := xml.NewDecoder(strings.NewReader(xmlContent))
+	// Harden XML decoder to prevent XXE and other XML attacks
+	decoder.Strict = true
+	decoder.Entity = map[string]string{}
 
 	for {
 		token, err := decoder.Token()

@@ -26,7 +26,8 @@ func NewParser() *Parser {
 // Parse reads a PDF file and extracts text content.
 // It uses the github.com/ledongthuc/pdf library for text extraction.
 func (p *Parser) Parse(reader io.Reader) (*parser.DocumentUnit, error) {
-	text, err := io.ReadAll(reader)
+	limitedReader := io.LimitReader(reader, parser.MaxFileSize)
+	text, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read pdf: %w", err)
 	}
@@ -210,13 +211,14 @@ func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, [
 	}
 
 	// Read the PDF content
-	content, err := io.ReadAll(file)
+	limitedReader := io.LimitReader(file, parser.MaxFileSize)
+	content, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return 0, nil, wrapError("failed to read PDF content", err)
 	}
 
 	// Use pdfcpu to get page count and titles
-	cmd := exec.Command("pdfcpu", "info", req.File)
+	cmd := exec.Command("pdfcpu", "info", "--", req.File)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// Fallback to simple page count if pdfcpu is not available

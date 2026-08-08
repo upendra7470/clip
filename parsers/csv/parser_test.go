@@ -87,7 +87,7 @@ Bob,40,Manager`
 		}
 		_, err := csvParser.ParseWithContext(context.Background(), req)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "file does not exist")
+		assert.Contains(t, err.Error(), "file nonexistent.csv does not exist")
 
 		// Invalid row range
 		_, err = csvParser.ParseRange(context.Background(), req, 0, 1)

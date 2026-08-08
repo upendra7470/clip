@@ -12,7 +12,8 @@ import (
 type mockParser struct{}
 
 func (m *mockParser) Parse(reader io.Reader) (*DocumentUnit, error) {
-	text, err := io.ReadAll(reader)
+	limitedReader := io.LimitReader(reader, MaxFileSize)
+	text, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, err
 	}
