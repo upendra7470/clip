@@ -1,7 +1,5 @@
 package security
 
-import "time"
-
 // Security limits for document processing.
 // These constants are centralized to be shared across all parsers.
 const (
@@ -29,16 +27,4 @@ const (
 
 	// MaxTokenCount limits the number of decoder tokens for streaming parsers.
 	MaxTokenCount = 1_000_000
-
-	// MaxImageDimension limits the width or height of a decoded image header.
-	// This prevents decompression and memory exhaustion from pathologically
-	// large images before they reach the OCR engine.
-	MaxImageDimension = 20_000 // pixels per side
-
-	// MaxImagePixels limits the total pixel count of an image.
-	// A 100-megapixel image is far beyond OCR's useful resolution.
-	MaxImagePixels = 100_000_000
-
-	// MaxOCRDuration bounds how long a single OCR operation may run.
-	MaxOCRDuration = 5 * time.Minute
 )

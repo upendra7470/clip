@@ -26,8 +26,7 @@ clip report.pdf 5-10     # only pages 5-10
 
 ## Features
 
-- **14 file formats** supported out of the box — see the [table](#supported-formats)
-- **OCR for images** (PNG, JPEG, WebP) via local Tesseract — offline, private
+- **13 file formats** supported out of the box — see the [table](#supported-formats)
 - **Range extraction** with units that make sense per format (pages, slides, rows, sections, values)
 - **Open-ended ranges** — `2-` for "from 2 to the end", `-5` for "the first 5"
 - **Smart filename resolution** — searches your current directory, Downloads, Desktop, and Documents when given a bare filename
@@ -52,46 +51,12 @@ clip report.pdf 5-10     # only pages 5-10
 | JSON | `.json` | entries |
 | XML / HTML | `.xml`, `.html` | entries / blocks |
 | YAML | `.yaml`, `.yml` | values |
-| Images (OCR) | `.png`, `.jpg`, `.jpeg`, `.webp` | lines |
 
 ## Requirements
 
 - **None at runtime** — Clip is a single static binary.
 - **Linux users:** a clipboard backend is required — `xclip` (X11) or `wl-copy` (Wayland). Install with `sudo apt install xclip`, `sudo dnf install xclip`, or your distribution's equivalent.
-- **Image OCR:** requires a local [Tesseract](#ocr-image-text-extraction) installation; everything else works without it.
 - **Go 1.26+** only if building from source.
-
-## OCR (image text extraction)
-
-Clip extracts visible text from images using **Tesseract**, running fully offline on your machine — no API keys, no cloud, no network access.
-
-```bash
-clip screenshot.png        # copy recognized text to the clipboard
-clip receipt.jpg 1-3       # copy specific lines of recognized text
-```
-
-If an image contains no readable text (e.g. a photo of a car with no text), Clip reports `no text detected in image` instead of failing unexpectedly.
-
-Colored images are automatically converted to grayscale before OCR — this measurably improves recognition on stylized or tinted documents. For further tuning:
-
-```bash
-clip letter.png --ocr-lang deu+eng   # specify OCR language(s)
-clip letter.png --ocr-psm 6          # page segmentation mode (see tesseract --psm)
-```
-
-> **Accuracy tips:** OCR works best on clean printed text. Handwriting and decorative fonts have inherent limits; installing higher-quality training data (tessdata_best) and additional languages improves results further.
-
-Install the OCR engine:
-
-| Platform | Command |
-|----------|---------|
-| macOS | `brew install tesseract` |
-| Debian / Ubuntu | `sudo apt install tesseract-ocr` |
-| Fedora | `sudo dnf install tesseract` |
-| Arch | `sudo pacman -S tesseract` |
-| Windows | `winget install UB-Mannheim.TesseractOCR` |
-
-Without Tesseract installed, image files produce a clear error explaining how to install it; all other formats work as usual.
 
 ## Installation
 

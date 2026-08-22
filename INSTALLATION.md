@@ -64,19 +64,6 @@ sudo pacman -S xclip        # Arch
 
 No backend needed on macOS (`pbcopy`) or Windows (`clip.exe`) — both are built in.
 
-## OCR Engine (optional)
-
-Extracting text from images requires [Tesseract](https://github.com/tesseract-ocr/tesseract):
-
-```bash
-brew install tesseract          # macOS
-sudo apt install tesseract-ocr  # Debian / Ubuntu
-sudo dnf install tesseract      # Fedora
-winget install UB-Mannheim.TesseractOCR  # Windows
-```
-
-All other file formats work without it; image files show a clear install hint when Tesseract is missing.
-
 ## PATH Setup
 
 ### Verify Installation

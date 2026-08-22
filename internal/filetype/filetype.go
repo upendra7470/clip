@@ -23,5 +23,4 @@ const (
 	FileTypeXML      FileType = "XML"
 	FileTypeHTML     FileType = "HTML"
 	FileTypeYAML     FileType = "YAML"
-	FileTypeImage    FileType = "IMAGE"
 )
