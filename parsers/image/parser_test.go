@@ -217,6 +217,60 @@ func containsError(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
 
+// capturingEngine records the bytes it was given.
+type capturingEngine struct {
+	fakeEngine
+	received []byte
+}
+
+func (c *capturingEngine) ExtractText(ctx context.Context, data []byte) (string, error) {
+	c.received = data
+	return c.fakeEngine.text, c.fakeEngine.err
+}
+
+func TestParsePreprocessesToGrayscalePNG(t *testing.T) {
+	// Colored input must be normalized to a valid grayscale PNG before
+	// reaching the engine - this measurably improves recognition.
+	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
+	for y := 0; y < 10; y++ {
+		for x := 0; x < 10; x++ {
+			img.Set(x, y, color.RGBA{R: 200, A: 255}) // red tint
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("failed to encode fixture: %v", err)
+	}
+	path := writeTestFile(t, "color.png", buf.Bytes())
+	eng := &capturingEngine{fakeEngine: fakeEngine{text: "ok"}}
+	p := NewParserWithEngine(eng)
+
+	if _, err := p.ParseWithContext(context.Background(), parser.ParseRequest{File: path}); err != nil {
+		t.Fatalf("ParseWithContext() unexpected error: %v", err)
+	}
+	if len(eng.received) == 0 {
+		t.Fatal("engine received no data")
+	}
+	decoded, err := png.Decode(bytes.NewReader(eng.received))
+	if err != nil {
+		t.Fatalf("engine received non-decodable image: %v", err)
+	}
+	if _, ok := decoded.(*image.Gray); !ok {
+		t.Errorf("expected grayscale image, got %T", decoded)
+	}
+
+	// Already-grayscale input must pass through unchanged.
+	path2 := writeTestFile(t, "bw.png", mustPNG(t, 10, 10))
+	eng2 := &capturingEngine{fakeEngine: fakeEngine{text: "ok"}}
+	p2 := NewParserWithEngine(eng2)
+	if _, err := p2.ParseWithContext(context.Background(), parser.ParseRequest{File: path2}); err != nil {
+		t.Fatalf("ParseWithContext() unexpected error: %v", err)
+	}
+	if !bytes.Equal(eng2.received, mustPNG(t, 10, 10)) {
+		t.Error("grayscale input should not be re-encoded")
+	}
+}
+
 func TestRegistration(t *testing.T) {
 	reg := registry.New()
 	p := NewParser()

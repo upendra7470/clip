@@ -48,6 +48,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	versionFlag := flagSet.Bool("version", false, "Show version information")
 	listFlag := flagSet.Bool("list", false, "List document units (pages, sections, slides, etc.)")
 	inspectFlag := flagSet.Bool("inspect", false, "Inspect document units (pages, sections, slides, etc.)")
+	ocrLangFlag := flagSet.String("ocr-lang", "", "OCR language(s) for images (e.g. eng, deu+eng)")
+	ocrPSMFlag := flagSet.Int("ocr-psm", image.DefaultPageSegMode, "OCR page segmentation mode (1-13, see tesseract --psm)")
 	err := flagSet.Parse(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "Error parsing flags: %v\n", err)
@@ -175,7 +177,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// Register image parser (OCR: PNG, JPEG, WebP)
-	imageParser := image.NewParser()
+	imageEngine := &image.TesseractEngine{Language: *ocrLangFlag, PageSegMode: *ocrPSMFlag}
+	imageParser := image.NewParserWithEngine(imageEngine)
 	if err := reg.Register(imageParser.FileType(), imageParser); err != nil {
 		fmt.Fprintf(stderr, "Failed to register image parser: %v\n", err)
 		return 1
@@ -405,6 +408,8 @@ func showHelp() {
 	fmt.Println("Additional commands:")
 	fmt.Println("  clip --version")
 	fmt.Println("  clip --help")
+	fmt.Println("  clip --ocr-lang eng    (OCR language(s), e.g. deu+eng)")
+	fmt.Println("  clip --ocr-psm 6       (OCR page segmentation mode)")
 }
 
 // getFilePathAndRangeFromArgs extracts the file path and optional range argument from parsed flag arguments.

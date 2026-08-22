@@ -72,6 +72,15 @@ clip receipt.jpg 1-3       # copy specific lines of recognized text
 
 If an image contains no readable text (e.g. a photo of a car with no text), Clip reports `no text detected in image` instead of failing unexpectedly.
 
+Colored images are automatically converted to grayscale before OCR — this measurably improves recognition on stylized or tinted documents. For further tuning:
+
+```bash
+clip letter.png --ocr-lang deu+eng   # specify OCR language(s)
+clip letter.png --ocr-psm 6          # page segmentation mode (see tesseract --psm)
+```
+
+> **Accuracy tips:** OCR works best on clean printed text. Handwriting and decorative fonts have inherent limits; installing higher-quality training data (tessdata_best) and additional languages improves results further.
+
 Install the OCR engine:
 
 | Platform | Command |

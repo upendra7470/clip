@@ -26,7 +26,14 @@ var DefaultEngine Engine = &TesseractEngine{Language: DefaultLanguage}
 type TesseractEngine struct {
 	// Language selects the Tesseract language data (e.g. "eng", "deu+eng").
 	Language string
+
+	// PageSegMode selects Tesseract's page segmentation mode (--psm).
+	// Zero means DefaultPageSegMode (3 = fully automatic page segmentation).
+	PageSegMode int
 }
+
+// DefaultPageSegMode is Tesseract's fully-automatic page segmentation mode.
+const DefaultPageSegMode = 3
 
 // Name returns the engine name for diagnostics.
 func (e *TesseractEngine) Name() string {
@@ -62,10 +69,15 @@ func (e *TesseractEngine) ExtractText(ctx context.Context, data []byte) (string,
 		language = DefaultLanguage
 	}
 
+	psm := e.PageSegMode
+	if psm == 0 {
+		psm = DefaultPageSegMode
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, security.MaxOCRDuration)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, TesseractBinary, "stdin", "stdout", "-l", language)
+	cmd := exec.CommandContext(ctx, TesseractBinary, "stdin", "stdout", "-l", language, "--psm", fmt.Sprintf("%d", psm))
 	cmd.Stdin = bytes.NewReader(data)
 
 	var stderr strings.Builder

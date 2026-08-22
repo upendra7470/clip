@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"os"
 	"strings"
@@ -154,7 +156,15 @@ func (p *Parser) extractText(ctx context.Context, content []byte) (string, error
 	if p.engine == nil {
 		p.engine = DefaultEngine
 	}
-	text, err := p.engine.ExtractText(ctx, content)
+
+	// Normalize the image (grayscale) before OCR; this measurably improves
+	// recognition on colored, low-contrast, or stylized documents.
+	normalized, err := preprocessForOCR(content)
+	if err != nil {
+		return "", err
+	}
+
+	text, err := p.engine.ExtractText(ctx, normalized)
 	if err != nil {
 		return "", err
 	}
@@ -177,6 +187,47 @@ func validateImageDimensions(content []byte) error {
 		return wrapError("unsupported or corrupt image: could not decode header", err)
 	}
 	return checkImageDimensions(cfg.Width, cfg.Height)
+}
+
+// preprocessForOCR converts the image to grayscale and re-encodes it as
+// PNG when it contains color. Grayscale removes color noise and background
+// tints that otherwise confuse recognition; images that are already
+// grayscale pass through untouched so clean input stays deterministic.
+func preprocessForOCR(content []byte) ([]byte, error) {
+	src, _, err := image.Decode(bytes.NewReader(content))
+	if err != nil {
+		return nil, wrapError("unsupported or corrupt image: could not decode", err)
+	}
+
+	b := src.Bounds()
+	hasColor := false
+	for y := b.Min.Y; y < b.Max.Y && !hasColor; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			r, g, bl, _ := src.At(x, y).RGBA()
+			if uint8(r>>8) != uint8(g>>8) || uint8(g>>8) != uint8(bl>>8) {
+				hasColor = true
+				break
+			}
+		}
+	}
+	if !hasColor {
+		return content, nil
+	}
+
+	gray := image.NewGray(image.Rect(0, 0, b.Dx(), b.Dy()))
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			r, g, bl, _ := src.At(x, y).RGBA()
+			lum := uint8((299*r + 587*g + 114*bl) / 65536 / 257)
+			gray.SetGray(x-b.Min.X, y-b.Min.Y, color.Gray{Y: lum})
+		}
+	}
+
+	var out bytes.Buffer
+	if err := png.Encode(&out, gray); err != nil {
+		return nil, wrapError("failed to normalize image", err)
+	}
+	return out.Bytes(), nil
 }
 
 // checkImageDimensions enforces the configured image dimension and pixel
