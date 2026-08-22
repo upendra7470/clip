@@ -1,29 +1,37 @@
 # Clip
 
-A fast, cross-platform command-line utility that extracts text from documents and copies it directly to the user's clipboard using one consistent command regardless of document type.
+A fast, cross-platform command-line utility that extracts text from documents and copies it directly to your clipboard — one consistent command, regardless of document type.
 
-## Problem Statement
+## Why Clip?
 
-Working with documents across different formats (PDF, DOCX, images, etc.) often requires multiple tools and manual copy-pasting. Clip aims to simplify this workflow with a unified interface.
-
-## Vision
-
-Clip will become the go-to tool for developers, researchers, and professionals who need to quickly extract text from various document formats without switching between different applications.
+Working with documents across different formats (PDF, DOCX, XLSX, ...) usually means juggling multiple apps just to grab a snippet of text. Clip gives you a single command that opens the file, extracts the text you need — optionally from a specific range of pages, slides, rows, or sections — and puts it straight on your clipboard.
 
 ## Features
 
-### Current Features (Phase 1)
-- Basic CLI structure
-- Help and version flags
-- Clean project foundation
+- **13 document formats** supported out of the box
+- **Range extraction** — copy pages 5-10 of a PDF or slides 2-5 of a deck
+- **Smart file resolution** — searches common locations when given only a filename
+- **Safety hardened** — bounded file reads, zip-bomb protection, nesting-depth limits
+- **Cross-platform** — Linux, macOS, and Windows
+- **Zero configuration** — no config files required
 
-### Planned Features
-- Support for multiple document formats (PDF, DOCX, images with OCR, etc.)
-- Direct clipboard copying
-- Text extraction with formatting preservation
-- Batch processing
-- Custom output formatting
-- Plugin system for additional formats
+## Supported Formats
+
+| Format    | Range Unit |
+|-----------|------------|
+| PDF       | pages      |
+| DOCX      | sections   |
+| PPT / PPTX| slides     |
+| ODT       | paragraphs |
+| RTF       | paragraphs |
+| TXT       | lines      |
+| Markdown  | blocks     |
+| CSV       | rows       |
+| XLSX      | rows       |
+| ODS       | rows       |
+| JSON      | entries    |
+| XML / HTML| entries / blocks |
+| YAML      | values     |
 
 ## Installation
 
@@ -33,111 +41,79 @@ Clip will become the go-to tool for developers, researchers, and professionals w
 git clone https://github.com/upendra7470/clip.git
 cd clip
 go build -o clip ./cmd/clip
-sudo cp clip /usr/local/bin/clip
+sudo cp clip /usr/local/bin/clip   # or move it anywhere on your PATH
 ```
 
-### Install to System
+### Using go install
 
 ```bash
 go install github.com/upendra7470/clip/cmd/clip@latest
-# Verify installation
+```
+
+Verify the installation:
+
+```bash
 clip --version
 ```
 
-# Verify installation
-clip --version
-
-## Troubleshooting
-
-### PATH Issues
-
-If the `clip` command is not recognized after installation, ensure that your PATH environment variable includes the directory where the binary was installed. For Go installations, this is typically `$GOPATH/bin`.
-
-```bash
-# Check if the binary is in your PATH
-echo $PATH | grep $GOPATH/bin
-
-# If not, add it to your PATH
-```
-
-## Build Instructions
-
-```bash
-# Build the CLI
-go build -o clip ./cmd/clip
-
-# Run tests
-go test ./...
-
-# Install to system
-sudo cp clip /usr/local/bin/clip
-```
+If `clip` is not recognized after installing with `go install`, make sure `$GOPATH/bin` (usually `$HOME/go/bin`) is in your `PATH`.
 
 ## Usage
 
 ```bash
-# Show help
-clip --help
-
-# Show version
-clip --version
-
-# Extract text from a file
+# Extract everything and copy to clipboard
 clip report.pdf
 
-# Extract text from a file with a range
+# Extract a range (pages 5-10) and copy to clipboard
 clip report.pdf 5-10
+
+# Filenames with spaces work when quoted; ranges are detected automatically
 clip "The Brain.docx" 1-3
 clip presentation.pptx 2-5
 clip spreadsheet.xlsx 2-10
+
+# Open-ended ranges: from value 2 to the end
+clip data.yaml 2-
+
+# Show help / version
+clip --help
+clip --version
 ```
 
-### Future Usage Examples
+Clip copies the extracted text to your clipboard by default so you can paste it anywhere immediately.
+
+## Development
 
 ```bash
-# Extract text from a PDF and copy to clipboard
-clip extract document.pdf
-
-# Extract text from multiple files
-clip extract file1.pdf file2.docx
-
-# Extract text and save to file
-clip extract document.pdf --output output.txt
-
-# Extract text with specific format
-clip extract document.pdf --format plain
-```
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-Contributions are welcome! Please follow these guidelines:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/your-feature`)
-3. Commit your changes (`git commit -am 'Add some feature'`)
-4. Push to the branch (`git push origin feature/your-feature`)
-5. Open a Pull Request
-
-### Development Setup
-
-```bash
-# Clone the repository
 git clone https://github.com/upendra7470/clip.git
 cd clip
 
-# Build and test
-go build -o clip ./cmd/clip
-go test ./...
+make build    # build the CLI
+make test     # run all tests
+make fmt      # format code
+make vet      # run go vet
+make help     # list all commands
 ```
 
-### Code Quality
+The project is plain Go with no code generation. Parsers live in `parsers/<format>/` and share safety utilities from `internal/security`.
 
-- Follow idiomatic Go
-- Keep files small and focused
-- Write clear, maintainable code
-- Add tests for new functionality
-- Keep the codebase clean and organized
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines, including how to add a new format parser.
+
+## Security
+
+Clip processes untrusted documents, so the parsers enforce defensive limits (bounded reads, zip-bomb checks, XML token limits, RTF nesting-depth caps). If you discover a security vulnerability, please follow the process in [SECURITY.md](SECURITY.md) rather than opening a public issue.
+
+## Roadmap
+
+- OCR support for images
+- Batch processing of multiple files
+- Output to stdout / files (`--output`)
+- Plugin system for additional formats
+
+## License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) to get started.

@@ -10,8 +10,8 @@ make install
 
 This will:
 1. Build the Clip binary
-2. Install it to `/usr/local/bin/clip`
-3. Make it executable
+2. Install it to `~/.local/bin/clip`
+3. Make sure the directory exists
 4. Clean up build artifacts
 
 ### Using go install
@@ -44,15 +44,15 @@ This installs the binary to your `$GOPATH/bin` directory. Ensure this directory 
 which clip
 ```
 
-Should output: `/usr/local/bin/clip` or `~/go/bin/clip`
+Should output: `/usr/local/bin/clip`, `~/.local/bin/clip`, or `~/go/bin/clip`
 
 ### Add to PATH (if needed)
 
-If you installed to `~/go/bin` but it's not in your PATH:
+If you installed to `~/.local/bin` or `~/go/bin` and it's not in your PATH:
 
 ```bash
 # Add to your shell configuration (.bashrc, .zshrc, etc.)
-export PATH=$PATH:~/go/bin
+export PATH=$PATH:$HOME/.local/bin:$HOME/go/bin
 
 # Then reload
 source ~/.zshrc  # or source ~/.bashrc
@@ -67,7 +67,7 @@ If `which clip` shows a Python package instead of the Go binary:
    echo $PATH
    ```
 
-2. Ensure `/usr/local/bin` or `~/go/bin` comes before Python directories.
+2. Ensure `/usr/local/bin`, `~/.local/bin`, or `~/go/bin` comes before Python directories.
 
 3. Use the full path temporarily:
    ```bash
@@ -75,6 +75,12 @@ If `which clip` shows a Python package instead of the Go binary:
    ```
 
 ## Uninstallation
+
+### Remove from ~/.local/bin
+
+```bash
+rm ~/.local/bin/clip
+```
 
 ### Remove from /usr/local/bin
 
@@ -173,11 +179,12 @@ sudo chmod +x /usr/local/bin/clip
 
 ```bash
 make build      # Build the binary
-make install    # Install globally
+make install    # Install to ~/.local/bin
 make uninstall  # Remove installation
 make clean      # Clean build artifacts
 make test       # Run tests
 make fmt        # Format code
+make vet        # Run go vet
 make help       # Show help
 ```
 
@@ -186,7 +193,7 @@ make help       # Show help
 After installation, verify everything works:
 
 ```bash
-clip --version      # Should show "Clip v1.0.0"
+clip --version      # Should show "clip v1.0.0"
 clip --help         # Should show usage information
 clip sample.txt     # Should extract and copy text
 ```
