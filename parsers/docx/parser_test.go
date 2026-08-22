@@ -365,41 +365,6 @@ func TestParseRangePreservesUnicode(t *testing.T) {
 	assert.Contains(t, result.Text, "Русский текст")
 }
 
-func TestExtractTables(t *testing.T) {
-	// Test that headings correctly start logical sections
-	tests := []struct {
-		name     string
-		content  string
-		start    int
-		end      int
-		expected string
-	}{
-		{
-			name:     "Table in selected range",
-			content:  "Table 1\nTable 2\nTable 3",
-			start:    2,
-			end:      2,
-			expected: "Table 2",
-		},
-		{
-			name:     "Nested table paragraphs",
-			content:  "Paragraph before table\nCell with nested paragraphs\nFirst nested paragraph\nSecond nested paragraph\nSimple cell\nParagraph after table",
-			start:    2,
-			end:      3,
-			expected: "Cell with nested paragraphs\nFirst nested paragraph",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			parser := NewParser()
-			result, err := parser.ExtractTables(tt.content, tt.start, tt.end)
-			assert.NoError(t, err)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 func TestFullDOCXExtraction(t *testing.T) {
 	// Test that headings correctly start logical sections
 	// Test that full DOCX extraction returns all content including tables and paragraphs

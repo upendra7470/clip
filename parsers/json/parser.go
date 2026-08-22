@@ -11,6 +11,7 @@ import (
 
 	"github.com/upendra7470/clip/internal/filetype"
 	"github.com/upendra7470/clip/internal/parser"
+	"github.com/upendra7470/clip/internal/security"
 )
 
 // JSONParserError represents an error that occurs during JSON parsing.
@@ -72,7 +73,7 @@ func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) 
 // ParseWithContext implements the parser.Parser interface method for parsing with context
 func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
 	// Read the file content
-	content, err := os.ReadFile(req.File)
+	content, err := security.ReadFileBounded(req.File)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
@@ -120,16 +121,20 @@ func (p *Parser) GetRangeUnit() parser.RangeUnit {
 
 // ParseRange extracts text from a specific line range in a JSON file.
 func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
+	// Handle sentinel values BEFORE validation
+	// -1 means "from start" for start, or "to end" for end
+	// These will be normalized by the parser implementations
+
 	// Validate line range
-	if start < 1 || end < 1 {
+	if start < 1 || (end != -1 && end < 1) {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("line numbers must start from 1, got %d-%d", start, end), nil)
 	}
-	if end < start {
+	if end != -1 && end < start {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid line range: start line must not be greater than end line (got %d-%d)", start, end), nil)
 	}
 
 	// Read the file content
-	content, err := os.ReadFile(req.File)
+	content, err := security.ReadFileBounded(req.File)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
@@ -141,6 +146,11 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	}
 	// Split into lines
 	lines := strings.Split(string(content), "\n")
+
+	// Normalize end value if it's -1
+	if end == -1 {
+		end = len(lines)
+	}
 
 	// Validate range against actual line count
 	if start > len(lines) || end > len(lines) {

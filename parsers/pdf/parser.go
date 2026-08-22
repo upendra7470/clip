@@ -302,32 +302,3 @@ func (e *PDFParserError) Error() string {
 func (e *PDFParserError) Unwrap() error {
 	return e.cause
 }
-
-// ExtractPages extracts pages from pdf content based on the given range
-func (p *Parser) ExtractPages(content string, start, end int) (string, error) {
-	// Split into pages (separated by newlines for this test)
-	pages := strings.Split(content, "\n")
-
-	if start < 1 || end < 1 {
-		return "", fmt.Errorf("page numbers must start from 1, got %d-%d", start, end)
-	}
-	if end < start {
-		return "", fmt.Errorf("invalid page range: start must not be greater than end (got %d-%d)", start, end)
-	}
-	if start > len(pages) {
-		return "", nil // Out of range returns empty
-	}
-	if end > len(pages) {
-		end = len(pages)
-	}
-
-	var result strings.Builder
-	for i := start - 1; i < end && i < len(pages); i++ {
-		if i > start-1 {
-			result.WriteString("\n")
-		}
-		result.WriteString(pages[i])
-	}
-
-	return result.String(), nil
-}

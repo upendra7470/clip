@@ -122,10 +122,10 @@ func TestParseSimpleObject(t *testing.T) {
 
 	// Create simple JSON object
 	content := []byte(`{
-  "name": "Sai",
-  "age": 19,
-  "city": "Hyderabad"
-}`)
+	  "name": "Sai",
+	  "age": 19,
+	  "city": "Hyderabad"
+	}`)
 	err := os.WriteFile(filePath, content, 0644)
 	if err != nil {
 		t.Fatalf("Failed to create simple JSON test file: %v", err)
@@ -165,13 +165,13 @@ func TestParseNestedObject(t *testing.T) {
 
 	// Create nested JSON object
 	content := []byte(`{
-  "name": "Sai",
-  "age": 19,
-  "address": {
-    "city": "Hyderabad",
-    "country": "India"
-  }
-}`)
+	  "name": "Sai",
+	  "age": 19,
+	  "address": {
+		"city": "Hyderabad",
+		"country": "India"
+	  }
+	}`)
 	err := os.WriteFile(filePath, content, 0644)
 	if err != nil {
 		t.Fatalf("Failed to create nested JSON test file: %v", err)
@@ -211,13 +211,13 @@ func TestParseArray(t *testing.T) {
 
 	// Create JSON array
 	content := []byte(`[
-  {
-    "name": "Sai"
-  },
-  {
-    "name": "Ravi"
-  }
-]`)
+	  {
+		"name": "Sai"
+	  },
+	  {
+		"name": "Ravi"
+	  }
+	]`)
 	err := os.WriteFile(filePath, content, 0644)
 	if err != nil {
 		t.Fatalf("Failed to create array JSON test file: %v", err)
@@ -254,10 +254,10 @@ func TestParseUnicodeContent(t *testing.T) {
 
 	// Create JSON with Unicode content
 	content := []byte(`{
-  "name": "Alice",
-  "message": "Hello 世界! 🌍",
-  "greeting": "Привет мир!"
-}`)
+	  "name": "Alice",
+	  "message": "Hello 世界! 🌍",
+	  "greeting": "Привет мир!"
+	}`)
 	err := os.WriteFile(filePath, content, 0644)
 	if err != nil {
 		t.Fatalf("Failed to create Unicode JSON test file: %v", err)
@@ -289,9 +289,9 @@ func TestParseComplexUnicode(t *testing.T) {
 
 	// Create JSON with complex Unicode content
 	content := []byte(`{
-  "title": "Complex Unicode Test",
-  "description": "Testing various Unicode characters: \u0041\u030A (Å), \u03A9 (Ω), \uD83D\uDE00 (😀), \uD83D\uDC4D (👍)"
-}`)
+	  "title": "Complex Unicode Test",
+	  "description": "Testing various Unicode characters: \u0041\u030A (Å), \u03A9 (Ω), \uD83D\uDE00 (😀), \uD83D\uDC4D (👍)"
+	}`)
 	err := os.WriteFile(filePath, content, 0644)
 	if err != nil {
 		t.Fatalf("Failed to create complex Unicode JSON test file: %v", err)
@@ -321,10 +321,10 @@ func TestParseBooleanAndNull(t *testing.T) {
 
 	// Create JSON with boolean and null values
 	content := []byte(`{
-  "active": true,
-  "verified": false,
-  "optional": null
-}`)
+	  "active": true,
+	  "verified": false,
+	  "optional": null
+	}`)
 	err := os.WriteFile(filePath, content, 0644)
 	if err != nil {
 		t.Fatalf("Failed to create boolean JSON test file: %v", err)
@@ -367,13 +367,13 @@ func TestParseEdgeCases(t *testing.T) {
 
 	// Create JSON with edge cases
 	content := []byte(`{
-  "empty_string": "",
-  "whitespace_string": "   ",
-  "number": 0,
-  "negative_number": -0,
-  "large_number": 99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999,
-  "negative_large_number": -99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999
-}`)
+	  "empty_string": "",
+	  "whitespace_string": "   ",
+	  "number": 0,
+	  "negative_number": -0,
+	  "large_number": 99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999,
+	  "negative_large_number": -99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999
+	}`)
 	err := os.WriteFile(filePath, content, 0644)
 	if err != nil {
 		t.Fatalf("Failed to create edge cases JSON test file: %v", err)
@@ -417,11 +417,11 @@ func TestParseNumbers(t *testing.T) {
 
 	// Create JSON with various number types
 	content := []byte(`{
-  "age": 19,
-  "price": 29.99,
-  "quantity": 0,
-  "temperature": -5.5
-}`)
+	  "age": 19,
+	  "price": 29.99,
+	  "quantity": 0,
+	  "temperature": -5.5
+	}`)
 	err := os.WriteFile(filePath, content, 0644)
 	if err != nil {
 		t.Fatalf("Failed to create numbers JSON test file: %v", err)
@@ -467,10 +467,10 @@ func TestParseScientificNotation(t *testing.T) {
 
 	// Create JSON with scientific notation
 	content := []byte(`{
-  "small": 1.23e-5,
-  "large": 9.87e+10,
-  "negative": -3.14e-2
-}`)
+	  "small": 1.23e-5,
+	  "large": 9.87e+10,
+	  "negative": -3.14e-2
+	}`)
 	err := os.WriteFile(filePath, content, 0644)
 	if err != nil {
 		t.Fatalf("Failed to create scientific notation JSON test file: %v", err)
@@ -540,11 +540,11 @@ func TestParseRange(t *testing.T) {
 
 	// Create JSON with multiple entries
 	content := []byte(`{
-  "name": "Sai",
-  "age": 19,
-  "city": "Hyderabad",
-  "country": "India"
-}`)
+	  "name": "Sai",
+	  "age": 19,
+	  "city": "Hyderabad",
+	  "country": "India"
+	}`)
 	err := os.WriteFile(filePath, content, 0644)
 	if err != nil {
 		t.Fatalf("Failed to create range test JSON file: %v", err)
@@ -574,9 +574,9 @@ func TestParseRangeInvalid(t *testing.T) {
 
 	// Create JSON file
 	content := []byte(`{
-  "name": "Sai",
-  "age": 19
-}`)
+	  "name": "Sai",
+	  "age": 19
+	}`)
 	err := os.WriteFile(filePath, content, 0644)
 	if err != nil {
 		t.Fatalf("Failed to create range invalid JSON file: %v", err)
@@ -597,6 +597,40 @@ func TestParseRangeInvalid(t *testing.T) {
 	_, err = p.ParseRange(context.Background(), req, 1, 100)
 	if err == nil {
 		t.Fatal("ParseRange() expected error for range exceeding file lines, got nil")
+	}
+}
+
+// Test for open-ended range support
+func TestParseRangeOpenEnded(t *testing.T) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "open_ended.json")
+
+	// Create JSON with multiple entries
+	content := []byte(`{
+	  "name": "Sai",
+	  "age": 19,
+	  "city": "Hyderabad",
+	  "country": "India"
+	}`)
+	err := os.WriteFile(filePath, content, 0644)
+	if err != nil {
+		t.Fatalf("Failed to create open-ended test JSON file: %v", err)
+	}
+
+	p := &Parser{}
+	req := parser.ParseRequest{
+		File: filePath,
+	}
+
+	// Test open-ended range (start from line 2 to end)
+	result, err := p.ParseRange(context.Background(), req, 2, -1)
+	if err != nil {
+		t.Fatalf("ParseRange() unexpected error for open-ended range: %v", err)
+	}
+
+	// Check that the result contains expected content from line 2 to end
+	if !strings.Contains(result.Text, "age") || !strings.Contains(result.Text, "country") {
+		t.Errorf("ParseRange() result missing expected content for open-ended range: got %q", result.Text)
 	}
 }
 

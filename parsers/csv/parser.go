@@ -75,9 +75,9 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 	content, err := os.ReadFile(req.File)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return parser.ParseResult{}, fmt.Errorf("file %s does not exist", req.File)
+			return parser.ParseResult{}, fmt.Errorf("file %s does not exist: %w", req.File, err)
 		}
-		return parser.ParseResult{}, fmt.Errorf("error reading file %s: %v", req.File, err)
+		return parser.ParseResult{}, fmt.Errorf("error reading file %s: %w", req.File, err)
 	}
 	if len(content) > parser.MaxFileSize {
 		return parser.ParseResult{}, fmt.Errorf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize)
@@ -119,9 +119,9 @@ func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, [
 	content, err := os.ReadFile(req.File)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return 0, nil, fmt.Errorf("file %s does not exist", req.File)
+			return 0, nil, fmt.Errorf("file %s does not exist: %w", req.File, err)
 		}
-		return 0, nil, fmt.Errorf("error reading file %s: %v", req.File, err)
+		return 0, nil, fmt.Errorf("error reading file %s: %w", req.File, err)
 	}
 	if len(content) > parser.MaxFileSize {
 		return 0, nil, fmt.Errorf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize)
@@ -151,11 +151,15 @@ func (p *Parser) GetRangeUnit() parser.RangeUnit {
 
 // ParseRange extracts text from a specific row range in a CSV file.
 func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
+	// Handle sentinel values BEFORE validation
+	// -1 means "from start" for start, or "to end" for end
+	// These will be normalized by the parser implementations
+
 	// Validate row range
-	if start < 1 || end < 1 {
+	if start < 1 || (end != -1 && end < 1) {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("row numbers must start from 1, got %d-%d", start, end), nil)
 	}
-	if end < start {
+	if end != -1 && end < start {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid row range: start row must not be greater than end row (got %d-%d)", start, end), nil)
 	}
 
@@ -163,9 +167,9 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	content, err := os.ReadFile(req.File)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return parser.ParseResult{}, fmt.Errorf("file %s does not exist", req.File)
+			return parser.ParseResult{}, fmt.Errorf("file %s does not exist: %w", req.File, err)
 		}
-		return parser.ParseResult{}, fmt.Errorf("error reading file %s: %v", req.File, err)
+		return parser.ParseResult{}, fmt.Errorf("error reading file %s: %w", req.File, err)
 	}
 	if len(content) > parser.MaxFileSize {
 		return parser.ParseResult{}, fmt.Errorf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize)
@@ -173,9 +177,15 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 
 	// Parse CSV content
 	csvReader := csv.NewReader(strings.NewReader(string(content)))
+	csvReader.LazyQuotes = true
 	records, err := csvReader.ReadAll()
 	if err != nil {
 		return parser.ParseResult{}, wrapError("invalid CSV format", err)
+	}
+
+	// Normalize end value if it's -1
+	if end == -1 {
+		end = len(records)
 	}
 
 	// Validate range against actual row count

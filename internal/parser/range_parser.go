@@ -76,9 +76,12 @@ func ParseRange(rangeStr string) (Range, error) {
 
 	// Handle sentinel values BEFORE validation
 	// -1 means "from start" for start, or "to end" for end
-	// These will be normalized by the parser implementations
+	// These are normalized before validation
 
-	// Validate range values (only for non-sentinel values)
+	// Validate range values - skip validation for sentinel values (-1)
+	// start == -1 means "from start" - no validation needed
+	// end == -1 means "to end" - no validation needed
+	// Only validate non-sentinel values
 	if start != -1 && start < 1 {
 		return Range{}, fmt.Errorf("range values must start from 1, got %d", start)
 	}
@@ -88,6 +91,11 @@ func ParseRange(rangeStr string) (Range, error) {
 	// Only validate start > end if both are non-sentinel
 	if start != -1 && end != -1 && start > end {
 		return Range{}, fmt.Errorf("invalid range: start value must not be greater than end value (got %d-%d)", start, end)
+	}
+
+	// Reject case where both start and end are -1 (just a dash with no numbers)
+	if start == -1 && end == -1 {
+		return Range{}, fmt.Errorf("invalid range: must specify at least one number")
 	}
 
 	return Range{Start: start, End: end}, nil
@@ -108,11 +116,11 @@ func ValidateRange(r Range, docUnit DocumentUnit) error {
 	// Additional validation based on document unit
 	switch docUnit.Type {
 	case "sections":
-	// No additional validation for blocks
+		// No additional validation for blocks
 	case "pages":
-	// No additional validation for pages
+		// No additional validation for pages
 	case "characters":
-	// No additional validation for characters
+		// No additional validation for characters
 	default:
 		return fmt.Errorf("unknown document unit: %s", docUnit.Type)
 	}

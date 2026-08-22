@@ -423,44 +423,74 @@ func getFilePathAndRangeFromArgs(args []string) (string, string) {
 	return filename, ""
 }
 
-// getFilePathAndRange is now deprecated in favor of getFilePathAndRangeFromArgs
-func getFilePathAndRange() (string, string) {
-	return getFilePathAndRangeFromArgs(os.Args[1:])
-}
-
 // isRangeArgument checks if an argument looks like a range specification.
 // A valid range contains digits and optionally a dash (e.g., "5", "5-10", "1-", "-10").
 func isRangeArgument(arg string) bool {
 	// Remove any quotes from the argument
 	arg = strings.Trim(arg, `"`)
 
-	// Check if it contains only digits and optionally a dash
+	// Check if empty
+	if arg == "" {
+		return false
+	}
+
+	// Check if it contains only digits, dashes, and optional whitespace
 	hasDigits := false
 	hasOtherChars := false
 
 	for _, c := range arg {
 		if c >= '0' && c <= '9' {
 			hasDigits = true
-		} else if c != '-' {
+		} else if c == '-' {
+			// dash is handled below
+		} else if !isSpace(c) {
 			hasOtherChars = true
 		}
 	}
 
-	// Valid range: has digits, may have dashes, no other characters
-	// Also allow open-ended ranges like "1-" or "-10"
-	if hasDigits && !hasOtherChars {
-		return true
+	// Must have at least one digit
+	if !hasDigits {
+		return false
 	}
 
-	// Check for open-ended ranges: "1-" or "-10"
-	if strings.HasPrefix(arg, "-") || strings.HasSuffix(arg, "-") {
-		// Must have at least one digit
-		for _, c := range arg {
-			if c >= '0' && c <= '9' {
-				return true
+	// Count dashes - valid ranges have at most one dash
+	dashCount := strings.Count(arg, "-")
+	if dashCount > 1 {
+		return false
+	}
+
+	// Check for open-ended ranges: "N-" or "-N"
+	if dashCount == 1 {
+		if arg[0] == '-' {
+			// "-N" format - must have digits after the dash
+			for _, c := range arg[1:] {
+				if c >= '0' && c <= '9' {
+					return true
+				}
 			}
+			return false
+		}
+		if arg[len(arg)-1] == '-' {
+			// "N-" format - must have digits before the dash
+			for _, c := range arg[:len(arg)-1] {
+				if c >= '0' && c <= '9' {
+					return true
+				}
+			}
+			return false
 		}
 	}
 
+	// Check for valid dash-separated format: "N" or "N-M"
+	// Must not have other characters
+	if !hasOtherChars {
+		return true
+	}
+
 	return false
+}
+
+// isSpace checks if a character is whitespace
+func isSpace(c rune) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/upendra7470/clip/internal/filetype"
 	"github.com/upendra7470/clip/internal/parser"
+	"github.com/upendra7470/clip/internal/security"
 )
 
 // XMLParserError represents an error that occurs during XML parsing.
@@ -72,7 +73,7 @@ func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) 
 // ParseWithContext implements the parser.Parser interface method for parsing with context
 func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
 	// Read the file content
-	content, err := os.ReadFile(req.File)
+	content, err := security.ReadFileBounded(req.File)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
@@ -116,30 +117,31 @@ func (p *Parser) GetRangeUnit() parser.RangeUnit {
 
 // ParseRange extracts text from a specific text block range in an XML file.
 func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
+	// Handle sentinel values BEFORE validation
+	// -1 means "from start" for start, or "to end" for end
+	// These will be normalized by the parser implementations
+
 	// Validate text block range
-	if start < 1 || end < 1 {
+	if start < 1 || (end != -1 && end < 1) {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("text block numbers must start from 1, got %d-%d", start, end), nil)
 	}
-	if end < start {
+	if end != -1 && end < start {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid text block range: start block must not be greater than end block (got %d-%d)", start, end), nil)
 	}
 
 	// Read the file content
-	content, err := os.ReadFile(req.File)
+	content, err := security.ReadFileBounded(req.File)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
+		}
+		if errors.Is(err, os.ErrPermission) {
+			return parser.ParseResult{}, wrapError(fmt.Sprintf("permission denied reading file %s", req.File), err)
 		}
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
 	}
 	if len(content) > parser.MaxFileSize {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize), nil)
-	}
-	if os.IsNotExist(err) {
-		return parser.ParseResult{}, wrapError("Could not open XML file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
-	}
-	if os.IsPermission(err) {
-		return parser.ParseResult{}, wrapError("Could not open XML file:\n"+req.File+"\n\nReason:\npermission denied", err)
 	}
 	// Check if file is empty
 	if len(content) == 0 {
@@ -150,6 +152,11 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	text, totalBlocks, err := extractTextFromXMLWithBlocks(content)
 	if err != nil {
 		return parser.ParseResult{}, wrapError("invalid XML syntax", err)
+	}
+
+	// Normalize end value if it's -1
+	if end == -1 {
+		end = totalBlocks
 	}
 
 	// Validate range against actual block count
@@ -179,10 +186,7 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 // extractTextFromXML extracts readable text from XML content
 func extractTextFromXML(content []byte) (string, error) {
 	var result strings.Builder
-	decoder := xml.NewDecoder(strings.NewReader(string(content)))
-	// Harden XML decoder to prevent XXE and other XML attacks
-	decoder.Strict = true
-	decoder.Entity = map[string]string{}
+	decoder := security.NewXMLDecoder(strings.NewReader(string(content)))
 
 	for {
 		token, err := decoder.Token()
@@ -195,8 +199,8 @@ func extractTextFromXML(content []byte) (string, error) {
 
 		switch t := token.(type) {
 		case xml.CharData:
-			// Extract text content, trim excessive whitespace but preserve meaningful content
-			text := strings.TrimSpace(string(t))
+			// Extract text content with whitespace normalized
+			text := normalizeXMLText(string(t))
 			if text != "" {
 				if result.Len() > 0 {
 					result.WriteString("\n")
@@ -205,6 +209,7 @@ func extractTextFromXML(content []byte) (string, error) {
 			}
 		case xml.StartElement, xml.EndElement, xml.Comment, xml.ProcInst, xml.Directive:
 			// Ignore elements, attributes, comments, processing instructions
+			_ = t
 			continue
 		}
 	}
@@ -215,11 +220,8 @@ func extractTextFromXML(content []byte) (string, error) {
 // extractTextFromXMLWithBlocks extracts readable text from XML content with block tracking.
 func extractTextFromXMLWithBlocks(content []byte) (string, int, error) {
 	var result strings.Builder
-	decoder := xml.NewDecoder(strings.NewReader(string(content)))
-	// Harden XML decoder to prevent XXE and other XML attacks
-	decoder.Strict = true
-	decoder.Entity = map[string]string{}
-	var blockCount int
+	decoder := security.NewXMLDecoder(strings.NewReader(string(content)))
+	blockCount := 0
 
 	for {
 		token, err := decoder.Token()
@@ -232,8 +234,8 @@ func extractTextFromXMLWithBlocks(content []byte) (string, int, error) {
 
 		switch t := token.(type) {
 		case xml.CharData:
-			// Extract text content, trim excessive whitespace but preserve meaningful content
-			text := strings.TrimSpace(string(t))
+			// Extract text content with whitespace normalized
+			text := normalizeXMLText(string(t))
 			if text != "" {
 				if result.Len() > 0 {
 					result.WriteString("\n")
@@ -243,11 +245,18 @@ func extractTextFromXMLWithBlocks(content []byte) (string, int, error) {
 			}
 		case xml.StartElement, xml.EndElement, xml.Comment, xml.ProcInst, xml.Directive:
 			// Ignore elements, attributes, comments, processing instructions
+			_ = t
 			continue
 		}
 	}
 
 	return result.String(), blockCount, nil
+}
+
+// normalizeXMLText trims surrounding whitespace and collapses internal
+// whitespace runs (newlines, tabs, indentation) into single spaces.
+func normalizeXMLText(text string) string {
+	return strings.Join(strings.Fields(text), " ")
 }
 
 // wrapError wraps an error with additional context.

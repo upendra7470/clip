@@ -12,6 +12,7 @@ import (
 
 	"github.com/upendra7470/clip/internal/filetype"
 	"github.com/upendra7470/clip/internal/parser"
+	"github.com/upendra7470/clip/internal/security"
 )
 
 // Parser implements the parser.Parser, parser.RangeParser, and parser.DocumentLister interfaces for DOCX files. It preserves headings, paragraphs, tables, and nested table content.
@@ -83,19 +84,17 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 		return parser.ParseResult{}, wrapError("failed to read DOCX as ZIP archive", err)
 	}
 
+	// Check total uncompressed size to prevent zip bombs
+	if err := security.CheckZipArchiveTotalSize(zipReader.File); err != nil {
+		return parser.ParseResult{}, wrapError("failed to read DOCX as ZIP archive", err)
+	}
+
 	// Find and extract word/document.xml
 	var documentXML string
 	for _, zipFile := range zipReader.File {
 		if zipFile.Name == "word/document.xml" {
-			rc, err := zipFile.Open()
+			content, err := security.ReadZipFile(zipFile)
 			if err != nil {
-				return parser.ParseResult{}, wrapError("failed to open document.xml", err)
-			}
-
-			limitedReader := io.LimitReader(rc, parser.MaxFileSize)
-			content, err := io.ReadAll(limitedReader)
-			if err != nil {
-				rc.Close() // Close immediately after reading
 				return parser.ParseResult{}, wrapError("failed to read document.xml", err)
 			}
 			documentXML = string(content)
@@ -154,18 +153,16 @@ func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, [
 		return 0, nil, wrapError("failed to read DOCX as ZIP archive", err)
 	}
 
+	// Check total uncompressed size to prevent zip bombs
+	if err := security.CheckZipArchiveTotalSize(zipReader.File); err != nil {
+		return 0, nil, wrapError("failed to read DOCX as ZIP archive", err)
+	}
+
 	// Find and extract word/document.xml
 	var documentXML string
 	for _, zipFile := range zipReader.File {
 		if zipFile.Name == "word/document.xml" {
-			rc, err := zipFile.Open()
-			if err != nil {
-				return 0, nil, wrapError("failed to open document.xml", err)
-			}
-			defer rc.Close()
-
-			limitedReader := io.LimitReader(rc, parser.MaxFileSize)
-			content, err := io.ReadAll(limitedReader)
+			content, err := security.ReadZipFile(zipFile)
 			if err != nil {
 				return 0, nil, wrapError("failed to read document.xml", err)
 			}
@@ -211,7 +208,7 @@ func (p *Parser) GetRangeUnit() parser.RangeUnit {
 func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
 	// Handle sentinel values BEFORE validation
 	// -1 means "from start" for start, or "to end" for end
-	// These will be normalized by the parser implementations
+	// These are normalized before validation
 
 	// Open the DOCX file (which is a ZIP archive)
 	file, err := os.Open(req.File)
@@ -238,18 +235,16 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 		return parser.ParseResult{}, wrapError("failed to read DOCX as ZIP archive", err)
 	}
 
+	// Check total uncompressed size to prevent zip bombs
+	if err := security.CheckZipArchiveTotalSize(zipReader.File); err != nil {
+		return parser.ParseResult{}, wrapError("failed to read DOCX as ZIP archive", err)
+	}
+
 	// Find and extract word/document.xml
 	var documentXML string
 	for _, zipFile := range zipReader.File {
 		if zipFile.Name == "word/document.xml" {
-			rc, err := zipFile.Open()
-			if err != nil {
-				return parser.ParseResult{}, wrapError("failed to open document.xml", err)
-			}
-			defer rc.Close()
-
-			limitedReader := io.LimitReader(rc, parser.MaxFileSize)
-			content, err := io.ReadAll(limitedReader)
+			content, err := security.ReadZipFile(zipFile)
 			if err != nil {
 				return parser.ParseResult{}, wrapError("failed to read document.xml", err)
 			}
@@ -272,7 +267,7 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	sections := detectSections(structuredParagraphs)
 	totalSections := len(sections)
 
-	// Handle sentinel values
+	// Handle sentinel values BEFORE validation
 	if start == -1 {
 		start = 1 // Start from beginning
 	}
@@ -346,10 +341,7 @@ func extractParagraphsFromXML(xmlContent string) ([]string, int, error) {
 	var paragraphs []string
 	var currentParagraph strings.Builder
 
-	decoder := xml.NewDecoder(strings.NewReader(xmlContent))
-	// Harden XML decoder to prevent XXE and other XML attacks
-	decoder.Strict = true
-	decoder.Entity = map[string]string{}
+	decoder := security.NewXMLDecoder(strings.NewReader(xmlContent))
 	var inTextNode bool
 	var inParagraph bool
 	var currentText strings.Builder
@@ -481,10 +473,7 @@ func extractStructuredContentFromXML(xmlContent string, collectParagraphs bool) 
 	var paragraphs []StructuredParagraph
 	var currentParagraph strings.Builder
 
-	decoder := xml.NewDecoder(strings.NewReader(xmlContent))
-	// Harden XML decoder to prevent XXE and other XML attacks
-	decoder.Strict = true
-	decoder.Entity = map[string]string{}
+	decoder := security.NewXMLDecoder(strings.NewReader(xmlContent))
 
 	for {
 		token, err := decoder.Token()
@@ -667,62 +656,4 @@ func (e *DOCXParserError) Error() string {
 
 func (e *DOCXParserError) Unwrap() error {
 	return e.cause
-}
-
-// ExtractBlocks extracts blocks from docx content based on the given range
-func (p *Parser) ExtractBlocks(content string, start, end int) (string, error) {
-	// Split into blocks (paragraphs separated by newlines)
-	blocks := strings.Split(content, "\n")
-
-	if start < 1 || end < 1 {
-		return "", fmt.Errorf("block numbers must start from 1, got %d-%d", start, end)
-	}
-	if end < start {
-		return "", fmt.Errorf("invalid block range: start must not be greater than end (got %d-%d)", start, end)
-	}
-	if start > len(blocks) {
-		return "", nil // Out of range returns empty
-	}
-	if end > len(blocks) {
-		end = len(blocks)
-	}
-
-	var result strings.Builder
-	for i := start - 1; i < end && i < len(blocks); i++ {
-		if i > start-1 {
-			result.WriteString("\n")
-		}
-		result.WriteString(blocks[i])
-	}
-
-	return result.String(), nil
-}
-
-// ExtractTables extracts tables from docx content based on the given range
-func (p *Parser) ExtractTables(content string, start, end int) (string, error) {
-	// Split into tables (separated by newlines for this simple test)
-	tables := strings.Split(content, "\n")
-
-	if start < 1 || end < 1 {
-		return "", fmt.Errorf("table numbers must start from 1, got %d-%d", start, end)
-	}
-	if end < start {
-		return "", fmt.Errorf("invalid table range: start must not be greater than end (got %d-%d)", start, end)
-	}
-	if start > len(tables) {
-		return "", nil // Out of range returns empty
-	}
-	if end > len(tables) {
-		end = len(tables)
-	}
-
-	var result strings.Builder
-	for i := start - 1; i < end && i < len(tables); i++ {
-		if i > start-1 {
-			result.WriteString("\n")
-		}
-		result.WriteString(tables[i])
-	}
-
-	return result.String(), nil
 }

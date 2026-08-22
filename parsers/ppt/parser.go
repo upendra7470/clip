@@ -12,6 +12,7 @@ import (
 	"github.com/richardlehane/mscfb"
 	"github.com/upendra7470/clip/internal/filetype"
 	"github.com/upendra7470/clip/internal/parser"
+	"github.com/upendra7470/clip/internal/security"
 )
 
 // PPTParserError represents an error that occurs during PPT parsing.
@@ -70,41 +71,41 @@ func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) 
 	return nil, fmt.Errorf("not implemented")
 }
 
-// ParseWithContext implements the parser.Parser interface method for parsing with context
-func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
-	// Open the PPT file
-	file, err := os.Open(req.File)
+// readPPTContent reads and validates a PPT file's raw bytes.
+func readPPTContent(path string) ([]byte, error) {
+	fileInfo, err := os.Stat(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return parser.ParseResult{}, wrapError("Could not open PPT file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, wrapError(fmt.Sprintf("file %s does not exist", path), err)
 		}
-		if os.IsPermission(err) {
-			return parser.ParseResult{}, wrapError("Could not open PPT file:\n"+req.File+"\n\nReason:\npermission denied", err)
+		if errors.Is(err, os.ErrPermission) {
+			return nil, wrapError(fmt.Sprintf("permission denied reading file %s", path), err)
 		}
-		return parser.ParseResult{}, wrapError("Could not open PPT file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
-	}
-	defer file.Close()
-
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return parser.ParseResult{}, wrapError("failed to get file info", err)
+		return nil, wrapError(fmt.Sprintf("error opening file %s: %v", path, err), err)
 	}
 
 	// Check if file is empty
 	if fileInfo.Size() == 0 {
-		return parser.ParseResult{}, wrapError("empty PPT file", nil)
+		return nil, wrapError("empty PPT file", nil)
 	}
 
 	// Read the file content
-	fileContent, err := os.ReadFile(req.File)
+	fileContent, err := security.ReadFileBounded(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
-		}
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
+		return nil, wrapError(fmt.Sprintf("error reading file %s: %v", path, err), err)
 	}
 	if len(fileContent) > parser.MaxFileSize {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize), nil)
+		return nil, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", path, parser.MaxFileSize), nil)
+	}
+
+	return fileContent, nil
+}
+
+// ParseWithContext implements the parser.Parser interface method for parsing with context
+func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
+	fileContent, err := readPPTContent(req.File)
+	if err != nil {
+		return parser.ParseResult{}, err
 	}
 
 	// Create a reader from the content
@@ -113,7 +114,7 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 	// Parse the OLE2 compound document
 	ole, err := mscfb.New(reader)
 	if err != nil {
-		return parser.ParseResult{}, wrapError("failed to parse PPT as OLE2 document", err)
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid PPT file: failed to parse %s as OLE2 document", req.File), err)
 	}
 
 	// Extract text from the PPT streams
@@ -145,47 +146,21 @@ func (p *Parser) GetRangeUnit() parser.RangeUnit {
 
 // ParseRange extracts text from a specific slide range in a PPT file.
 func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
+	// Handle sentinel values BEFORE validation
+	// -1 means "from start" for start, or "to end" for end
+	// These will be normalized by the parser implementations
+
 	// Validate slide range
-	if start < 1 || end < 1 {
+	if start < 1 || (end != -1 && end < 1) {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("slide numbers must start from 1, got %d-%d", start, end), nil)
 	}
-	if end < start {
+	if end != -1 && end < start {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid slide range: start slide must not be greater than end slide (got %d-%d)", start, end), nil)
 	}
 
-	// Open the PPT file
-	file, err := os.Open(req.File)
+	fileContent, err := readPPTContent(req.File)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return parser.ParseResult{}, wrapError("Could not open PPT file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
-		}
-		if os.IsPermission(err) {
-			return parser.ParseResult{}, wrapError("Could not open PPT file:\n"+req.File+"\n\nReason:\npermission denied", err)
-		}
-		return parser.ParseResult{}, wrapError("Could not open PPT file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
-	}
-	defer file.Close()
-
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return parser.ParseResult{}, wrapError("failed to get file info", err)
-	}
-
-	// Check if file is empty
-	if fileInfo.Size() == 0 {
-		return parser.ParseResult{}, wrapError("empty PPT file", nil)
-	}
-
-	// Read the file content
-	fileContent, err := os.ReadFile(req.File)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
-		}
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
-	}
-	if len(fileContent) > parser.MaxFileSize {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize), nil)
+		return parser.ParseResult{}, err
 	}
 	// Create a reader from the content
 	reader := bytes.NewReader(fileContent)
@@ -193,13 +168,18 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	// Parse the OLE2 compound document
 	ole, err := mscfb.New(reader)
 	if err != nil {
-		return parser.ParseResult{}, wrapError("failed to parse PPT as OLE2 document", err)
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid PPT file: failed to parse %s as OLE2 document", req.File), err)
 	}
 
 	// Extract text from the PPT streams with slide tracking
 	text, totalSlides, err := extractTextFromOLEWithSlides(ole, fileContent)
 	if err != nil {
 		return parser.ParseResult{}, wrapError("failed to extract text from PPT", err)
+	}
+
+	// Normalize end value if it's -1
+	if end == -1 {
+		end = totalSlides
 	}
 
 	// Validate range against actual slide count

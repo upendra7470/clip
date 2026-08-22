@@ -72,6 +72,24 @@ func TestParseRange(t *testing.T) {
 			wantErr: true,
 			errMsg:  "invalid range: start value must not be greater than end value (got 10-5)",
 		},
+		{
+			name:    "open-ended range from start -10",
+			input:   "-10",
+			want:    Range{Start: -1, End: 10},
+			wantErr: false,
+		},
+		{
+			name:    "open-ended range to end 2-",
+			input:   "2-",
+			want:    Range{Start: 2, End: -1},
+			wantErr: false,
+		},
+		{
+			name:    "open-ended range only dash -",
+			input:   "-",
+			wantErr: true,
+			errMsg:  "invalid range: must specify at least one number",
+		},
 	}
 
 	for _, tt := range tests {

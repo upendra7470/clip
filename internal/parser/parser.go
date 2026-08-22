@@ -11,14 +11,7 @@ import (
 )
 
 // Parser interface defines the contract for all parsers
-//go:generate mockgen -destination=./mocks/mock_parser.go -package=mocks github.com/yourorg/clip/internal/parser Parser
-//go:generate mockgen -destination=./mocks/mock_parser.go -package=mocks github.com/yourorg/clip/internal/parser Parser
-
-// Parser represents a generic file parser
-//go:generate mockgen -destination=./mocks/mock_parser.go -package=mocks github.com/yourorg/clip/internal/parser Parser
-
-// Parser represents a generic file parser
-//go:generate mockgen -destination=./mocks/mock_parser.go -package=mocks github.com/yourorg/clip/internal/parser Parser
+//go:generate mockgen -destination=./mocks/mock_parser.go -package=mocks github.com/upendra7470/clip/internal/parser Parser
 
 // ParseRequest represents a request to parse a file with optional selection criteria
 type ParseRequest struct {
@@ -81,7 +74,6 @@ type Parser interface {
 }
 
 // DocumentUnit represents a parsed document unit
-//go:generate mockgen -destination=./mocks/mock_document_unit.go -package=mocks github.com/yourorg/clip/internal/parser DocumentUnit
 
 // NewDocumentUnit creates a new DocumentUnit with the given content and metadata
 func NewDocumentUnit(text string, meta map[string]interface{}) *DocumentUnit {

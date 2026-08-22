@@ -3,6 +3,7 @@ package ods
 import (
 	"archive/zip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/upendra7470/clip/internal/filetype"
 	"github.com/upendra7470/clip/internal/parser"
+	"github.com/upendra7470/clip/internal/security"
 )
 
 // ODSParserError represents an error that occurs during ODS parsing.
@@ -103,10 +105,14 @@ func (p *Parser) GetRangeUnit() parser.RangeUnit {
 
 // ParseRange extracts text from a specific row range in an ODS file.
 func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
-	if start < 1 || end < 1 {
+	// Handle sentinel values BEFORE validation
+	// -1 means "from start" for start, or "to end" for end
+	// These will be normalized by the parser implementations
+
+	if start < 1 || (end != -1 && end < 1) {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("row numbers must start from 1, got %d-%d", start, end), nil)
 	}
-	if end < start {
+	if end != -1 && end < start {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid row range: start row must not be greater than end row (got %d-%d)", start, end), nil)
 	}
 
@@ -117,6 +123,11 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	if len(lines) == 0 {
 		return parser.ParseResult{}, wrapError("no readable content found in ODS", nil)
 	}
+	// Normalize end value if it's -1
+	if end == -1 {
+		end = len(lines)
+	}
+
 	if start > len(lines) || end > len(lines) {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested row range exceeds ODS row count (file has %d rows, requested %d-%d)", len(lines), start, end), nil)
 	}
@@ -139,18 +150,17 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 }
 
 // readODSLines opens an ODS file and returns row strings.
-// It parses content.xml from the ZIP archive when possible,
-// otherwise falls back to splitting raw file text by newline.
+// ODS files are ZIP archives containing content.xml; anything else is rejected as invalid.
 func readODSLines(path string) ([]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, wrapError("Could not open ODS file:\n"+path+"\n\nReason:\nfile does not exist", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, wrapError(fmt.Sprintf("file %s does not exist", path), err)
 		}
-		if os.IsPermission(err) {
-			return nil, wrapError("Could not open ODS file:\n"+path+"\n\nReason:\npermission denied", err)
+		if errors.Is(err, os.ErrPermission) {
+			return nil, wrapError(fmt.Sprintf("permission denied reading file %s", path), err)
 		}
-		return nil, wrapError("Could not open ODS file:\n"+path+"\n\nReason:\n"+err.Error(), err)
+		return nil, wrapError(fmt.Sprintf("error opening file %s: %v", path, err), err)
 	}
 	defer file.Close()
 
@@ -160,45 +170,32 @@ func readODSLines(path string) ([]string, error) {
 	}
 
 	zipReader, zipErr := zip.NewReader(file, fileInfo.Size())
-	if zipErr == nil {
-		var contentXML string
-		for _, zf := range zipReader.File {
-			if zf.Name == "content.xml" {
-				rc, err := zf.Open()
-				if err != nil {
-					continue
-				}
-				limitedReader := io.LimitReader(rc, parser.MaxFileSize)
-				data, err := io.ReadAll(limitedReader)
-				rc.Close()
-				if err != nil {
-					continue
-				}
-				contentXML = string(data)
-				break
+	if zipErr != nil {
+		return nil, wrapError(fmt.Sprintf("invalid ODS file: %s is not a valid ZIP archive", path), zipErr)
+	}
+
+	// Check total uncompressed size to prevent zip bombs
+	if err := security.CheckZipArchiveTotalSize(zipReader.File); err != nil {
+		return nil, wrapError("failed to read ODS as ZIP archive", err)
+	}
+
+	var contentXML string
+	for _, zf := range zipReader.File {
+		if zf.Name == "content.xml" {
+			data, err := security.ReadZipFile(zf)
+			if err != nil {
+				continue
 			}
-		}
-
-		if contentXML != "" {
-			return extractODSRows(contentXML), nil
+			contentXML = string(data)
+			break
 		}
 	}
 
-	// Fallback: raw text split by newline.
-	file, err = os.Open(path)
-	if err != nil {
-		return nil, wrapError("Could not open ODS file for fallback:\n"+path+"\n\nReason:\n"+err.Error(), err)
+	if contentXML == "" {
+		return nil, wrapError(fmt.Sprintf("invalid ODS file: %s contains no content.xml", path), nil)
 	}
-	defer file.Close()
-	limitedReader := io.LimitReader(file, parser.MaxFileSize)
-	data, err := io.ReadAll(limitedReader)
-	if err != nil {
-		return nil, wrapError("failed to read ODS file", err)
-	}
-	if len(data) == 0 {
-		return []string{}, nil
-	}
-	return strings.Split(string(data), "\n"), nil
+
+	return extractODSRows(contentXML), nil
 }
 
 // extractODSRows parses ODS content.xml text into rows by string scanning.

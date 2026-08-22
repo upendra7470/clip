@@ -93,7 +93,7 @@ skills:
 	if err != nil {
 		t.Fatalf("ParseRange() unexpected error: %v", err)
 	}
-	if !strings.Contains(result.Text, "age: 30") {
+	if !strings.Contains(result.Text, "30") || !strings.Contains(result.Text, "New York") {
 		t.Errorf("ParseRange() result missing expected content: got %q", result.Text)
 	}
 

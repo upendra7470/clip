@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/upendra7470/clip/internal/filetype"
 	"github.com/upendra7470/clip/internal/parser"
+	"github.com/upendra7470/clip/internal/security"
 )
 
 // ODTParserError represents an error that occurs during ODT parsing.
@@ -71,55 +73,53 @@ func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) 
 	return nil, fmt.Errorf("not implemented")
 }
 
-// ParseWithContext implements the parser.Parser interface method for parsing with context
-func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
-	// Open the ODT file (which is a ZIP archive)
-	file, err := os.Open(req.File)
+// readODTContent opens an ODT file (a ZIP archive) and returns its content.xml.
+func readODTContent(path string) (string, error) {
+	file, err := os.Open(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return parser.ParseResult{}, wrapError("Could not open ODT file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return "", wrapError(fmt.Sprintf("file %s does not exist", path), err)
 		}
-		if os.IsPermission(err) {
-			return parser.ParseResult{}, wrapError("Could not open ODT file:\n"+req.File+"\n\nReason:\npermission denied", err)
+		if errors.Is(err, os.ErrPermission) {
+			return "", wrapError(fmt.Sprintf("permission denied reading file %s", path), err)
 		}
-		return parser.ParseResult{}, wrapError("Could not open ODT file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+		return "", wrapError(fmt.Sprintf("error opening file %s: %v", path, err), err)
 	}
 	defer file.Close()
 
-	// Get file info for size
 	fileInfo, err := file.Stat()
 	if err != nil {
-		return parser.ParseResult{}, wrapError("failed to get file info", err)
+		return "", wrapError("failed to get file info", err)
 	}
 
-	// Read the ZIP archive
 	zipReader, err := zip.NewReader(file, fileInfo.Size())
 	if err != nil {
-		return parser.ParseResult{}, wrapError("failed to read ODT as ZIP archive", err)
+		return "", wrapError(fmt.Sprintf("invalid ODT file: %s is not a valid ZIP archive", path), err)
 	}
 
-	// Find and extract content.xml
-	var contentXML string
+	// Check total uncompressed size to prevent zip bombs
+	if err := security.CheckZipArchiveTotalSize(zipReader.File); err != nil {
+		return "", wrapError("failed to read ODT as ZIP archive", err)
+	}
+
 	for _, zipFile := range zipReader.File {
 		if zipFile.Name == "content.xml" {
-			rc, err := zipFile.Open()
+			content, err := security.ReadZipFile(zipFile)
 			if err != nil {
-				return parser.ParseResult{}, wrapError("failed to open content.xml", err)
+				return "", wrapError("failed to read content.xml", err)
 			}
-			defer rc.Close()
-
-			limitedReader := io.LimitReader(rc, parser.MaxFileSize)
-			content, err := io.ReadAll(limitedReader)
-			if err != nil {
-				return parser.ParseResult{}, wrapError("failed to read content.xml", err)
-			}
-			contentXML = string(content)
-			break
+			return string(content), nil
 		}
 	}
 
-	if contentXML == "" {
-		return parser.ParseResult{}, wrapError("content.xml not found in ODT", nil)
+	return "", wrapError(fmt.Sprintf("invalid ODT file: %s contains no content.xml", path), nil)
+}
+
+// ParseWithContext implements the parser.Parser interface method for parsing with context
+func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
+	contentXML, err := readODTContent(req.File)
+	if err != nil {
+		return parser.ParseResult{}, err
 	}
 
 	// Parse XML to extract text from <text:p> nodes
@@ -153,53 +153,9 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	// -1 means "from start" for start, or "to end" for end
 	// These will be normalized by the parser implementations
 
-	// Open the ODT file (which is a ZIP archive)
-	file, err := os.Open(req.File)
+	contentXML, err := readODTContent(req.File)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return parser.ParseResult{}, wrapError("Could not open ODT file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
-		}
-		if os.IsPermission(err) {
-			return parser.ParseResult{}, wrapError("Could not open ODT file:\n"+req.File+"\n\nReason:\npermission denied", err)
-		}
-		return parser.ParseResult{}, wrapError("Could not open ODT file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
-	}
-	defer file.Close()
-
-	// Get file info for size
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return parser.ParseResult{}, wrapError("failed to get file info", err)
-	}
-
-	// Read the ZIP archive
-	zipReader, err := zip.NewReader(file, fileInfo.Size())
-	if err != nil {
-		return parser.ParseResult{}, wrapError("failed to read ODT as ZIP archive", err)
-	}
-
-	// Find and extract content.xml
-	var contentXML string
-	for _, zipFile := range zipReader.File {
-		if zipFile.Name == "content.xml" {
-			rc, err := zipFile.Open()
-			if err != nil {
-				return parser.ParseResult{}, wrapError("failed to open content.xml", err)
-			}
-			defer rc.Close()
-
-			limitedReader := io.LimitReader(rc, parser.MaxFileSize)
-			content, err := io.ReadAll(limitedReader)
-			if err != nil {
-				return parser.ParseResult{}, wrapError("failed to read content.xml", err)
-			}
-			contentXML = string(content)
-			break
-		}
-	}
-
-	if contentXML == "" {
-		return parser.ParseResult{}, wrapError("content.xml not found in ODT", nil)
+		return parser.ParseResult{}, err
 	}
 
 	// Parse XML to extract text from <text:p> nodes with paragraph tracking
@@ -208,12 +164,14 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 		return parser.ParseResult{}, wrapError("failed to parse ODT XML", err)
 	}
 
-	// Handle sentinel values
+	// Normalize end value if it's -1
+	if end == -1 {
+		end = totalParagraphs
+	}
+
+	// Handle sentinel values for start
 	if start == -1 {
 		start = 1 // Start from beginning
-	}
-	if end == -1 {
-		end = totalParagraphs // End at last paragraph
 	}
 
 	// Validate paragraph range
@@ -259,10 +217,7 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 func extractTextFromXML(xmlContent string) (string, error) {
 	var result strings.Builder
 
-	decoder := xml.NewDecoder(strings.NewReader(xmlContent))
-	// Harden XML decoder to prevent XXE and other XML attacks
-	decoder.Strict = true
-	decoder.Entity = map[string]string{}
+	decoder := security.NewXMLDecoder(strings.NewReader(xmlContent))
 	var inParagraph bool
 	var currentText strings.Builder
 
@@ -308,10 +263,7 @@ func extractTextFromXMLWithParagraphs(xmlContent string) (string, int, error) {
 	var result strings.Builder
 	var paragraphCount int
 
-	decoder := xml.NewDecoder(strings.NewReader(xmlContent))
-	// Harden XML decoder to prevent XXE and other XML attacks
-	decoder.Strict = true
-	decoder.Entity = map[string]string{}
+	decoder := security.NewXMLDecoder(strings.NewReader(xmlContent))
 	var inParagraph bool
 	var currentText strings.Builder
 
@@ -365,33 +317,4 @@ func wrapError(message string, err error) error {
 		message: message,
 		cause:   err,
 	}
-}
-
-// ExtractBlocks extracts blocks from odt content based on the given range
-func (p *Parser) ExtractBlocks(content string, start, end int) (string, error) {
-	// Split into blocks (paragraphs separated by double newlines)
-	blocks := strings.Split(content, "\n\n")
-
-	if start < 1 || end < 1 {
-		return "", fmt.Errorf("block numbers must start from 1, got %d-%d", start, end)
-	}
-	if end < start {
-		return "", fmt.Errorf("invalid block range: start must not be greater than end (got %d-%d)", start, end)
-	}
-	if start > len(blocks) {
-		return "", nil // Out of range returns empty
-	}
-	if end > len(blocks) {
-		end = len(blocks)
-	}
-
-	var result strings.Builder
-	for i := start - 1; i < end && i < len(blocks); i++ {
-		if i > start-1 {
-			result.WriteString("\n\n")
-		}
-		result.WriteString(blocks[i])
-	}
-
-	return result.String(), nil
 }

@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/upendra7470/clip/internal/filetype"
 	"github.com/upendra7470/clip/internal/parser"
+	"github.com/upendra7470/clip/internal/security"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -117,13 +119,13 @@ func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, [
 	// Open the XLSX file
 	file, err := os.Open(req.File)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil, wrapError("Could not open XLSX file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, nil, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
 		}
-		if os.IsPermission(err) {
-			return 0, nil, wrapError("Could not open XLSX file:\n"+req.File+"\n\nReason:\npermission denied", err)
+		if errors.Is(err, os.ErrPermission) {
+			return 0, nil, wrapError(fmt.Sprintf("permission denied reading file %s", req.File), err)
 		}
-		return 0, nil, wrapError("Could not open XLSX file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+		return 0, nil, wrapError(fmt.Sprintf("error opening file %s: %v", req.File, err), err)
 	}
 	defer file.Close()
 
@@ -168,10 +170,14 @@ func (p *Parser) GetRangeUnit() parser.RangeUnit {
 
 // ParseRange extracts text from a specific row range in an XLSX file.
 func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
-	if start < 1 || end < 1 {
+	// Handle sentinel values BEFORE validation
+	// -1 means "from start" for start, or "to end" for end
+	// These will be normalized by the parser implementations
+
+	if start < 1 || (end != -1 && end < 1) {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("row numbers must start from 1, got %d-%d", start, end), nil)
 	}
-	if end < start {
+	if end != -1 && end < start {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid row range: start row must not be greater than end row (got %d-%d)", start, end), nil)
 	}
 
@@ -182,6 +188,11 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 
 	if len(lines) == 0 {
 		return parser.ParseResult{}, wrapError("no readable content found in XLSX", nil)
+	}
+
+	// Normalize end value if it's -1
+	if end == -1 {
+		end = len(lines)
 	}
 
 	if start > len(lines) || end > len(lines) {
@@ -206,18 +217,17 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 }
 
 // readXLSXLines reads an XLSX file and returns logical rows.
-// It first attempts ZIP/XML parsing for real XLSX files.
-// If the file is not a ZIP archive, it falls back to newline-split text.
+// XLSX files are ZIP archives; anything else is rejected as invalid.
 func readXLSXLines(path string) ([]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, wrapError("Could not open XLSX file:\n"+path+"\n\nReason:\nfile does not exist", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, wrapError(fmt.Sprintf("file %s does not exist", path), err)
 		}
-		if os.IsPermission(err) {
-			return nil, wrapError("Could not open XLSX file:\n"+path+"\n\nReason:\npermission denied", err)
+		if errors.Is(err, os.ErrPermission) {
+			return nil, wrapError(fmt.Sprintf("permission denied reading file %s", path), err)
 		}
-		return nil, wrapError("Could not open XLSX file:\n"+path+"\n\nReason:\n"+err.Error(), err)
+		return nil, wrapError(fmt.Sprintf("error opening file %s: %v", path, err), err)
 	}
 	defer file.Close()
 
@@ -226,75 +236,57 @@ func readXLSXLines(path string) ([]string, error) {
 		return nil, wrapError("failed to get XLSX file info", err)
 	}
 
-	// Try ZIP-based parsing first.
 	zipReader, zipErr := zip.NewReader(file, fileInfo.Size())
-	if zipErr == nil {
-		// Read all ZIP entries.
-		files := make(map[string]string)
-		for _, zf := range zipReader.File {
-			rc, err := zf.Open()
-			if err != nil {
-				continue
-			}
-			limitedReader := io.LimitReader(rc, parser.MaxFileSize)
-			data, err := io.ReadAll(limitedReader)
-			rc.Close()
-			if err != nil {
-				continue
-			}
-			files[zf.Name] = string(data)
-		}
+	if zipErr != nil {
+		return nil, wrapError(fmt.Sprintf("invalid XLSX file: %s is not a valid ZIP archive", path), zipErr)
+	}
 
-		// Parse shared strings.
-		var ss []string
-		if s, ok := files["xl/sharedStrings.xml"]; ok {
-			ss = parseXLSXSharedStrings(s)
-		}
+	// Check total uncompressed size to prevent zip bombs
+	if err := security.CheckZipArchiveTotalSize(zipReader.File); err != nil {
+		return nil, wrapError("failed to read XLSX as ZIP archive", err)
+	}
 
-		// Find first worksheet XML.
-		var wsXML string
-		for name, data := range files {
-			if strings.HasPrefix(name, "xl/worksheets/sheet") && strings.HasSuffix(name, ".xml") {
-				wsXML = data
-				break
-			}
+	// Read all ZIP entries.
+	files := make(map[string]string)
+	for _, zf := range zipReader.File {
+		data, err := security.ReadZipFile(zf)
+		if err != nil {
+			continue
 		}
+		files[zf.Name] = string(data)
+	}
 
-		if wsXML != "" {
-			rows := parseXLSXWorksheet(wsXML, ss)
-			lines := make([]string, 0, len(rows))
-			for _, row := range rows {
-				lines = append(lines, strings.Join(row.cells, ", "))
-			}
-			return lines, nil
+	// Parse shared strings.
+	var ss []string
+	if s, ok := files["xl/sharedStrings.xml"]; ok {
+		ss = parseXLSXSharedStrings(s)
+	}
+
+	// Find first worksheet XML.
+	var wsXML string
+	for name, data := range files {
+		if strings.HasPrefix(name, "xl/worksheets/sheet") && strings.HasSuffix(name, ".xml") {
+			wsXML = data
+			break
 		}
 	}
 
-	// Fallback: treat file contents as text split by newline.
-	// Re-open since ZIP parsing may have consumed file pointer.
-	file, err = os.Open(path)
-	if err != nil {
-		return nil, wrapError("Could not open XLSX file for fallback:\n"+path+"\n\nReason:\n"+err.Error(), err)
+	if wsXML == "" {
+		return nil, wrapError(fmt.Sprintf("invalid XLSX file: %s contains no worksheets", path), nil)
 	}
-	defer file.Close()
-	limitedReader := io.LimitReader(file, parser.MaxFileSize)
-	data, err := io.ReadAll(limitedReader)
-	if err != nil {
-		return nil, wrapError("failed to read XLSX file", err)
+
+	rows := parseXLSXWorksheet(wsXML, ss)
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		lines = append(lines, strings.Join(row.cells, ", "))
 	}
-	if len(data) == 0 {
-		return []string{}, nil
-	}
-	return strings.Split(string(data), "\n"), nil
+	return lines, nil
 }
 
 // parseXLSXSharedStrings parses shared strings XML.
 func parseXLSXSharedStrings(xmlContent string) []string {
 	var result []string
-	decoder := xml.NewDecoder(strings.NewReader(xmlContent))
-	// Harden XML decoder to prevent XXE and other XML attacks
-	decoder.Strict = true
-	decoder.Entity = map[string]string{}
+	decoder := security.NewXMLDecoder(strings.NewReader(xmlContent))
 	var inSi bool
 	var currentText strings.Builder
 
