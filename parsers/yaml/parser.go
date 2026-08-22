@@ -21,6 +21,12 @@ type YAMLParserError struct {
 }
 
 func (e *YAMLParserError) Error() string {
+	if e.cause != nil {
+		if e.message == "" {
+			return e.cause.Error()
+		}
+		return e.message + ": " + e.cause.Error()
+	}
 	if e.message == "" {
 		return "YAML parser error"
 	}
@@ -94,6 +100,15 @@ func (p *Parser) FileType() filetype.FileType {
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() parser.RangeUnit {
 	return parser.RangeUnitValues
+}
+
+// ListUnits implements the parser.DocumentLister interface for YAML files.
+func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
+	values, err := readYAMLValues(req.File)
+	if err != nil {
+		return 0, nil, err
+	}
+	return len(values), nil, nil
 }
 
 // ParseRange extracts text from a specific value range in a YAML file.

@@ -22,6 +22,12 @@ type RTFParserError struct {
 }
 
 func (e *RTFParserError) Error() string {
+	if e.cause != nil {
+		if e.message == "" {
+			return e.cause.Error()
+		}
+		return e.message + ": " + e.cause.Error()
+	}
 	if e.message == "" {
 		return "RTF parser error"
 	}
@@ -136,6 +142,23 @@ func (p *Parser) FileType() filetype.FileType {
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() parser.RangeUnit {
 	return parser.RangeUnitParagraphs
+}
+
+// ListUnits implements the parser.DocumentLister interface for RTF files.
+func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
+	content, err := readRTFContent(req.File)
+	if err != nil {
+		return 0, nil, err
+	}
+	if len(content) > parser.MaxFileSize {
+		return 0, nil, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize), nil)
+	}
+
+	_, totalParagraphs, err := extractPlainTextWithParagraphs(string(content))
+	if err != nil {
+		return 0, nil, wrapError("invalid RTF syntax", err)
+	}
+	return totalParagraphs, nil, nil
 }
 
 // ParseRange extracts text from a specific paragraph range in an RTF file.
@@ -398,6 +421,11 @@ func tokenizeRTF(rtfContent string) (string, error) {
 				// Destination control words suppress their whole group's text
 				if len(groupStack) > 0 && !groupStack[len(groupStack)-1] && rtfDestinationWords[word] {
 					groupStack[len(groupStack)-1] = true
+				}
+				// Paragraph/line break control words act as paragraph separators
+				switch word {
+				case "par", "line", "sect", "page":
+					writeByte('\n')
 				}
 				i = j
 

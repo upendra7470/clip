@@ -23,6 +23,12 @@ type PPTXParserError struct {
 }
 
 func (e *PPTXParserError) Error() string {
+	if e.cause != nil {
+		if e.message == "" {
+			return e.cause.Error()
+		}
+		return e.message + ": " + e.cause.Error()
+	}
 	if e.message == "" {
 		return "PPTX parser error"
 	}
@@ -74,8 +80,16 @@ func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) 
 	return nil, fmt.Errorf("not implemented")
 }
 
-// openPPTXSlides opens a PPTX file (a ZIP archive) and returns its slide files in order.
-func openPPTXSlides(path string) ([]*zip.File, error) {
+// pptxSlide is a slide's XML content read into memory.
+type pptxSlide struct {
+	name    string
+	content []byte
+}
+
+// openPPTXSlides opens a PPTX file (a ZIP archive) and returns its slides'
+// XML contents in order. Contents are read eagerly so the archive can be
+// closed safely before extraction.
+func openPPTXSlides(path string) ([]pptxSlide, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -110,31 +124,44 @@ func openPPTXSlides(path string) ([]*zip.File, error) {
 		}
 	}
 
+	if len(slideFiles) == 0 {
+		return nil, nil
+	}
+
 	// Sort slides by name to ensure proper order
 	sort.Slice(slideFiles, func(i, j int) bool {
 		return slideFiles[i].Name < slideFiles[j].Name
 	})
 
-	return slideFiles, nil
+	slides := make([]pptxSlide, 0, len(slideFiles))
+	for _, sf := range slideFiles {
+		content, err := security.ReadZipFile(sf)
+		if err != nil {
+			return nil, wrapError(fmt.Sprintf("failed to read slide file %s", sf.Name), err)
+		}
+		slides = append(slides, pptxSlide{name: sf.Name, content: content})
+	}
+
+	return slides, nil
 }
 
 // ParseWithContext implements the parser.Parser interface method for parsing with context
 func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
-	slideFiles, err := openPPTXSlides(req.File)
+	slides, err := openPPTXSlides(req.File)
 	if err != nil {
 		return parser.ParseResult{}, err
 	}
 
-	if len(slideFiles) == 0 {
+	if len(slides) == 0 {
 		return parser.ParseResult{}, wrapError("no slides found in PPTX", nil)
 	}
 
 	// Extract text from each slide
 	var result strings.Builder
-	for i, slideFile := range slideFiles {
-		text, err := extractTextFromSlide(slideFile)
+	for i, slide := range slides {
+		text, err := extractTextFromSlide(slide.content)
 		if err != nil {
-			return parser.ParseResult{}, wrapError(fmt.Sprintf("failed to parse slide %d", i+1), err)
+			return parser.ParseResult{}, wrapError(fmt.Sprintf("failed to parse slide %d (%s)", i+1, slide.name), err)
 		}
 
 		// Trim and add to result
@@ -166,6 +193,15 @@ func (p *Parser) FileType() filetype.FileType {
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() parser.RangeUnit {
 	return parser.RangeUnitSlides
+}
+
+// ListUnits implements the parser.DocumentLister interface for PPTX files.
+func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
+	slides, err := openPPTXSlides(req.File)
+	if err != nil {
+		return 0, nil, err
+	}
+	return len(slides), nil, nil
 }
 
 // ParseRange extracts text from a specific slide range in a PPTX file.
@@ -204,9 +240,9 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	// Extract text from the requested slide range
 	var result strings.Builder
 	for i := start - 1; i < end && i < len(slideFiles); i++ {
-		text, err := extractTextFromSlide(slideFiles[i])
+		text, err := extractTextFromSlide(slideFiles[i].content)
 		if err != nil {
-			return parser.ParseResult{}, wrapError(fmt.Sprintf("failed to parse slide %d", i+1), err)
+			return parser.ParseResult{}, wrapError(fmt.Sprintf("failed to parse slide %d (%s)", i+1, slideFiles[i].name), err)
 		}
 
 		// Trim and add to result
@@ -230,13 +266,8 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	}, nil
 }
 
-// extractTextFromSlide extracts text from a single slide XML file.
-func extractTextFromSlide(slideFile *zip.File) (string, error) {
-	content, err := security.ReadZipFile(slideFile)
-	if err != nil {
-		return "", fmt.Errorf("failed to read slide content: %w", err)
-	}
-
+// extractTextFromSlide extracts text from a slide's XML content.
+func extractTextFromSlide(content []byte) (string, error) {
 	var result strings.Builder
 	decoder := security.NewXMLDecoder(strings.NewReader(string(content)))
 	var inTextNode bool

@@ -20,6 +20,12 @@ type CSVParserError struct {
 }
 
 func (e *CSVParserError) Error() string {
+	if e.cause != nil {
+		if e.message == "" {
+			return e.cause.Error()
+		}
+		return e.message + ": " + e.cause.Error()
+	}
 	if e.message == "" {
 		return "CSV parser error"
 	}

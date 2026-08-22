@@ -21,6 +21,12 @@ type ODSParserError struct {
 }
 
 func (e *ODSParserError) Error() string {
+	if e.cause != nil {
+		if e.message == "" {
+			return e.cause.Error()
+		}
+		return e.message + ": " + e.cause.Error()
+	}
 	if e.message == "" {
 		return "ODS parser error"
 	}
@@ -101,6 +107,15 @@ func (p *Parser) FileType() filetype.FileType {
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() parser.RangeUnit {
 	return parser.RangeUnitRows
+}
+
+// ListUnits implements the parser.DocumentLister interface for ODS files.
+func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
+	rows, err := readODSLines(req.File)
+	if err != nil {
+		return 0, nil, err
+	}
+	return len(rows), nil, nil
 }
 
 // ParseRange extracts text from a specific row range in an ODS file.

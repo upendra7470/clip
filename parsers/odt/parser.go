@@ -22,6 +22,12 @@ type ODTParserError struct {
 }
 
 func (e *ODTParserError) Error() string {
+	if e.cause != nil {
+		if e.message == "" {
+			return e.cause.Error()
+		}
+		return e.message + ": " + e.cause.Error()
+	}
 	if e.message == "" {
 		return "ODT parser error"
 	}
@@ -145,6 +151,20 @@ func (p *Parser) FileType() filetype.FileType {
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() parser.RangeUnit {
 	return parser.RangeUnitParagraphs
+}
+
+// ListUnits implements the parser.DocumentLister interface for ODT files.
+func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
+	contentXML, err := readODTContent(req.File)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	_, totalParagraphs, err := extractTextFromXMLWithParagraphs(contentXML)
+	if err != nil {
+		return 0, nil, wrapError("failed to parse ODT XML", err)
+	}
+	return totalParagraphs, nil, nil
 }
 
 // ParseRange extracts text from a specific paragraph range in an ODT file.

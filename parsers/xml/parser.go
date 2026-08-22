@@ -21,6 +21,12 @@ type XMLParserError struct {
 }
 
 func (e *XMLParserError) Error() string {
+	if e.cause != nil {
+		if e.message == "" {
+			return e.cause.Error()
+		}
+		return e.message + ": " + e.cause.Error()
+	}
 	if e.message == "" {
 		return "XML parser error"
 	}
@@ -112,7 +118,30 @@ func (p *Parser) FileType() filetype.FileType {
 
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() parser.RangeUnit {
-	return parser.RangeUnit("elements")
+	return parser.RangeUnitEntries
+}
+
+// ListUnits implements the parser.DocumentLister interface for XML files.
+func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
+	content, err := security.ReadFileBounded(req.File)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, nil, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
+		}
+		if errors.Is(err, os.ErrPermission) {
+			return 0, nil, wrapError(fmt.Sprintf("permission denied reading file %s", req.File), err)
+		}
+		return 0, nil, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
+	}
+	if len(content) == 0 {
+		return 0, nil, wrapError("empty XML file", nil)
+	}
+
+	_, totalBlocks, err := extractTextFromXMLWithBlocks(content)
+	if err != nil {
+		return 0, nil, wrapError("invalid XML syntax", err)
+	}
+	return totalBlocks, nil, nil
 }
 
 // ParseRange extracts text from a specific text block range in an XML file.

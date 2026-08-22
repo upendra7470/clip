@@ -19,6 +19,12 @@ type HTMLParserError struct {
 }
 
 func (e *HTMLParserError) Error() string {
+	if e.cause != nil {
+		if e.message == "" {
+			return e.cause.Error()
+		}
+		return e.message + ": " + e.cause.Error()
+	}
 	if e.message == "" {
 		return "HTML parser error"
 	}
@@ -74,12 +80,12 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 	content, err := os.ReadFile(req.File)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return parser.ParseResult{}, wrapError("file %s does not exist", fmt.Errorf("file %s does not exist", req.File))
+			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
 		}
-		return parser.ParseResult{}, wrapError("error reading file %s: %v", fmt.Errorf("error reading file %s: %v", req.File, err))
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
 	}
 	if len(content) > parser.MaxFileSize {
-		return parser.ParseResult{}, wrapError("file %s exceeds maximum allowed size of %d bytes", fmt.Errorf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize))
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize), nil)
 	}
 
 	// Check if file is empty
@@ -113,6 +119,37 @@ func (p *Parser) GetRangeUnit() parser.RangeUnit {
 	return parser.RangeUnitSections
 }
 
+// ListUnits implements the parser.DocumentLister interface for HTML files.
+func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
+	content, err := os.ReadFile(req.File)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, nil, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
+		}
+		return 0, nil, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
+	}
+	if len(content) == 0 {
+		return 0, nil, wrapError("empty HTML file", nil)
+	}
+
+	text, err := extractTextFromHTML(string(content))
+	if err != nil {
+		return 0, nil, wrapError("failed to extract text from HTML", err)
+	}
+	if strings.TrimSpace(text) == "" {
+		return 0, nil, wrapError("no readable content found in HTML", nil)
+	}
+
+	blocks := strings.Split(text, "\n\n")
+	blockCount := 0
+	for _, block := range blocks {
+		if strings.TrimSpace(block) != "" {
+			blockCount++
+		}
+	}
+	return blockCount, nil, nil
+}
+
 // ParseRange extracts text from a specific text block range in an HTML file.
 func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
 	// Validate text block range
@@ -127,12 +164,12 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	content, err := os.ReadFile(req.File)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return parser.ParseResult{}, wrapError("file %s does not exist", fmt.Errorf("file %s does not exist", req.File))
+			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
 		}
-		return parser.ParseResult{}, wrapError("error reading file %s: %v", fmt.Errorf("error reading file %s: %v", req.File, err))
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
 	}
 	if len(content) > parser.MaxFileSize {
-		return parser.ParseResult{}, wrapError("file %s exceeds maximum allowed size of %d bytes", fmt.Errorf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize))
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize), nil)
 	}
 
 	// Check if file is empty

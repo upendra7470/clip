@@ -22,6 +22,12 @@ type PPTParserError struct {
 }
 
 func (e *PPTParserError) Error() string {
+	if e.cause != nil {
+		if e.message == "" {
+			return e.cause.Error()
+		}
+		return e.message + ": " + e.cause.Error()
+	}
 	if e.message == "" {
 		return "PPT parser error"
 	}
@@ -142,6 +148,25 @@ func (p *Parser) FileType() filetype.FileType {
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() parser.RangeUnit {
 	return parser.RangeUnitSlides
+}
+
+// ListUnits implements the parser.DocumentLister interface for PPT files.
+func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
+	fileContent, err := readPPTContent(req.File)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	ole, err := mscfb.New(bytes.NewReader(fileContent))
+	if err != nil {
+		return 0, nil, wrapError(fmt.Sprintf("invalid PPT file: failed to parse %s as OLE2 document", req.File), err)
+	}
+
+	_, totalSlides, err := extractTextFromOLEWithSlides(ole, fileContent)
+	if err != nil {
+		return 0, nil, wrapError("failed to extract text from PPT", err)
+	}
+	return totalSlides, nil, nil
 }
 
 // ParseRange extracts text from a specific slide range in a PPT file.

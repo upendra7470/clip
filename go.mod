@@ -3,7 +3,6 @@ module github.com/upendra7470/clip
 go 1.26.6
 
 require (
-	github.com/golang/mock v1.6.0
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/richardlehane/mscfb v1.0.8
 	github.com/stretchr/testify v1.12.1

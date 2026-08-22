@@ -36,5 +36,8 @@ go.work.sum
 bin/
 dist/
 
+# Tool caches
+.freebuff/
+
 # Dependency directories
 node_modules/

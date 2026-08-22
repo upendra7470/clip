@@ -11,6 +11,7 @@ import (
 
 	"github.com/upendra7470/clip/internal/filetype"
 	"github.com/upendra7470/clip/internal/parser"
+	"github.com/upendra7470/clip/internal/security"
 )
 
 // Parser implements the parser.Parser and parser.RangeParser interfaces for Markdown files.
@@ -86,6 +87,23 @@ func (p *Parser) FileType() filetype.FileType {
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() parser.RangeUnit {
 	return parser.RangeUnitSections
+}
+
+// ListUnits implements the parser.DocumentLister interface for Markdown files.
+func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
+	content, err := security.ReadFileBounded(req.File)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, nil, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
+		}
+		return 0, nil, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
+	}
+	if len(content) == 0 {
+		return 0, nil, wrapError("empty markdown file", nil)
+	}
+
+	sections := extractSections(string(content))
+	return len(sections), nil, nil
 }
 
 // ParseRange extracts text from a specific section range in a Markdown file.

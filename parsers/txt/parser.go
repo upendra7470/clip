@@ -20,6 +20,12 @@ type TextParserError struct {
 }
 
 func (e *TextParserError) Error() string {
+	if e.cause != nil {
+		if e.message == "" {
+			return e.cause.Error()
+		}
+		return e.message + ": " + e.cause.Error()
+	}
 	if e.message == "" {
 		return "text parser error"
 	}

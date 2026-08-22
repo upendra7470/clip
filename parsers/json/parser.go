@@ -21,6 +21,12 @@ type JSONParserError struct {
 }
 
 func (e *JSONParserError) Error() string {
+	if e.cause != nil {
+		if e.message == "" {
+			return e.cause.Error()
+		}
+		return e.message + ": " + e.cause.Error()
+	}
 	if e.message == "" {
 		return "JSON parser error"
 	}
@@ -117,6 +123,31 @@ func (p *Parser) FileType() filetype.FileType {
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() parser.RangeUnit {
 	return parser.RangeUnitEntries
+}
+
+// ListUnits implements the parser.DocumentLister interface for JSON files.
+// Entries correspond to the lines ParseRange operates on.
+func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
+	content, err := security.ReadFileBounded(req.File)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, nil, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
+		}
+		return 0, nil, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
+	}
+	if len(content) == 0 {
+		return 0, nil, wrapError("empty JSON file", nil)
+	}
+
+	var jsonData interface{}
+	decoder := json.NewDecoder(strings.NewReader(string(content)))
+	decoder.UseNumber()
+	if err := decoder.Decode(&jsonData); err != nil {
+		return 0, nil, wrapError("invalid JSON syntax", err)
+	}
+
+	lines := strings.Split(string(content), "\n")
+	return len(lines), nil, nil
 }
 
 // ParseRange extracts text from a specific line range in a JSON file.

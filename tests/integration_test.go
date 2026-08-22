@@ -249,8 +249,8 @@ func TestIntegrationXML(t *testing.T) {
 	req := parser.ParseRequest{File: filePath}
 
 	// Test GetRangeUnit
-	if p.GetRangeUnit() != "elements" {
-		t.Errorf("GetRangeUnit() = %q, want %q", p.GetRangeUnit(), "elements")
+	if p.GetRangeUnit() != parser.RangeUnitEntries {
+		t.Errorf("GetRangeUnit() = %q, want %q", p.GetRangeUnit(), parser.RangeUnitEntries)
 	}
 
 	// Test ParseRange with valid range
@@ -317,7 +317,7 @@ func TestIntegrationAllFormats(t *testing.T) {
 			ext:       ".xml",
 			content:   `<?xml version="1.0"?><root><item>Item 1</item><item>Item 2</item></root>`,
 			parser:    xml.NewParser(),
-			rangeUnit: "elements",
+			rangeUnit: string(parser.RangeUnitEntries),
 		},
 	}
 
