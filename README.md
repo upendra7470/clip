@@ -144,7 +144,7 @@ make install     # install to ~/.local/bin
 
 ```bash
 clip --version
-# clip v1.0.0
+# clip v1.0
 ```
 
 <details>
