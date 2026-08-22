@@ -52,19 +52,20 @@ jobs:
           build darwin  arm64
           build windows amd64
 
-          # Package each binary into a tarball/zip for easy download
+          # Package each binary into a tarball/zip for easy download,
+          # removing the raw binary as soon as it is archived
           cd dist
           for f in clip_*; do
             case "$f" in
               *.exe)
-                zip "${f%.exe}.zip" "$f"
+                zip -q "${f%.exe}.zip" "$f"
                 ;;
               *)
                 tar -czf "${f}.tar.gz" "$f"
                 ;;
             esac
+            rm "$f"
           done
-          rm -f clip_*
           shasum -a 256 * > checksums.txt
 
       - name: Publish release
