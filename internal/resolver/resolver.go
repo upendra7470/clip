@@ -31,17 +31,21 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (string, error)
 
 // isExactPath determines if the provided path is an exact path.
 func isExactPath(path string) bool {
-	// Check if path starts with ./, ../, or /
-	if strings.HasPrefix(path, "./") || strings.HasPrefix(path, "../") || filepath.IsAbs(path) {
+	// Check if path starts with ./, ../, /, or \ (both separator styles,
+	// since forward-slash paths must also work on Windows)
+	for _, prefix := range []string{"./", "../", ".\\", "..\\", "/", "\\"} {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+
+	// Check if path is absolute on the current platform (e.g. C:\... on Windows)
+	if filepath.IsAbs(path) {
 		return true
 	}
 
-	// Check if path contains directory separators
-	if strings.Contains(path, string(filepath.Separator)) {
-		return true
-	}
-
-	return false
+	// Check if path contains directory separators of either style
+	return strings.ContainsAny(path, "/\\")
 }
 
 // resolveExactPath handles exact path resolution.

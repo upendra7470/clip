@@ -337,7 +337,12 @@ func BuildCLIBinary(t *testing.T) string {
 
 	// Create a temporary directory for the binary
 	tmpDir := t.TempDir()
-	clipPath := filepath.Join(tmpDir, "clip")
+	binaryName := "clip"
+	if runtime.GOOS == "windows" {
+		// Windows requires the .exe extension to execute the binary
+		binaryName += ".exe"
+	}
+	clipPath := filepath.Join(tmpDir, binaryName)
 
 	// Get the module root directory (where go.mod is)
 	_, filename, _, _ := runtime.Caller(0)

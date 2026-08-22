@@ -97,17 +97,19 @@ func TestFilenameSearch(t *testing.T) {
 func TestContextCancellation(t *testing.T) {
 	t.Run("context cancellation during resolution", func(t *testing.T) {
 		resolver := New()
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
-		defer cancel()
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		// Cancel immediately so the context is guaranteed to be done
+		// when Resolve runs (a tiny timeout alone is racy on fast machines).
+		cancel()
 
-		// This should timeout
+		// This should return a context error
 		_, err := resolver.Resolve(ctx, "test.txt")
 		if err == nil {
-			t.Errorf("Expected context deadline exceeded error, got nil")
+			t.Errorf("Expected context cancellation error, got nil")
 		}
 
-		if err != context.DeadlineExceeded {
-			t.Errorf("Expected context.DeadlineExceeded, got %v", err)
+		if err != context.Canceled {
+			t.Errorf("Expected context.Canceled, got %v", err)
 		}
 	})
 }
@@ -168,6 +170,7 @@ func TestMultipleFilesFound(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create temp file 1: %v", err)
 		}
+		tmpFile1.Close() // Close before rename: Windows forbids renaming open files
 		defer os.Remove(tmpFile1.Name())
 
 		// Create a Downloads directory for testing
@@ -182,6 +185,7 @@ func TestMultipleFilesFound(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create temp file 2: %v", err)
 		}
+		tmpFile2.Close()
 		defer os.Remove(tmpFile2.Name())
 
 		// Rename both files to have the same name
@@ -268,6 +272,7 @@ func TestSmartFilenameResolution(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create temp file: %v", err)
 		}
+		tmpFile.Close()
 		defer os.Remove(tmpFile.Name())
 
 		// Rename to have specific case
@@ -317,6 +322,7 @@ func TestSmartFilenameResolution(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create temp file: %v", err)
 		}
+		tmpFile.Close()
 		defer os.Remove(tmpFile.Name())
 
 		// Rename to have specific name with spaces
@@ -356,12 +362,14 @@ func TestSmartFilenameResolution(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create exact file: %v", err)
 		}
+		exactFile.Close()
 		defer os.Remove(exactFile.Name())
 
 		smartFile, err := os.CreateTemp(".", "smart*.txt")
 		if err != nil {
 			t.Fatalf("Failed to create smart file: %v", err)
 		}
+		smartFile.Close()
 		defer os.Remove(smartFile.Name())
 
 		// Rename files
@@ -403,6 +411,7 @@ func TestMultipleFilesSmartMatching(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create temp file 1: %v", err)
 		}
+		tmpFile1.Close()
 		defer os.Remove(tmpFile1.Name())
 
 		// Create a Downloads directory for testing
@@ -417,6 +426,7 @@ func TestMultipleFilesSmartMatching(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create temp file 2: %v", err)
 		}
+		tmpFile2.Close()
 		defer os.Remove(tmpFile2.Name())
 
 		// Rename both files to have names that would smart-match the same query
