@@ -23,8 +23,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Install Linux clipboard dependencies
+        run: sudo apt-get update && sudo apt-get install -y xclip xvfb
+
       - name: Run tests
-        run: go test ./...
+        run: xvfb-run -a go test ./...
 
       - name: Build release binaries
         run: |
