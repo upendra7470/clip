@@ -57,6 +57,8 @@ func Type(path string) (filetype.FileType, error) {
 		return filetype.FileTypeHTML, nil
 	case "yaml", "yml":
 		return filetype.FileTypeYAML, nil
+	case "png", "jpg", "jpeg", "webp":
+		return filetype.FileTypeImage, nil
 	default:
 		return "", fmt.Errorf("unsupported file extension: .%s", ext)
 	}

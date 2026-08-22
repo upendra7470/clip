@@ -19,6 +19,7 @@ import (
 	"github.com/upendra7470/clip/parsers/csv"
 	"github.com/upendra7470/clip/parsers/docx"
 	"github.com/upendra7470/clip/parsers/html"
+	"github.com/upendra7470/clip/parsers/image"
 	"github.com/upendra7470/clip/parsers/json"
 	"github.com/upendra7470/clip/parsers/markdown"
 	"github.com/upendra7470/clip/parsers/ods"
@@ -168,6 +169,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	rtfParser := &rtf.Parser{}
 	if err := reg.Register(rtfParser.FileType(), rtfParser); err != nil {
 		fmt.Fprintf(stderr, "Failed to register RTF parser: %v\n", err)
+		return 1
+	}
+
+	// Register image parser (OCR: PNG, JPEG, WebP)
+	imageParser := image.NewParser()
+	if err := reg.Register(imageParser.FileType(), imageParser); err != nil {
+		fmt.Fprintf(stderr, "Failed to register image parser: %v\n", err)
 		return 1
 	}
 
@@ -389,6 +397,8 @@ func showHelp() {
 	fmt.Println("  XML       -> entries")
 	fmt.Println("  HTML      -> blocks")
 	fmt.Println("  YAML      -> values")
+	fmt.Println("  PNG/JPG/  -> lines (OCR; requires tesseract)")
+	fmt.Println("  WebP")
 	fmt.Println()
 	fmt.Println("Additional commands:")
 	fmt.Println("  clip --version")
