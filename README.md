@@ -1,119 +1,195 @@
+<div align="center">
+
 # Clip
 
-A fast, cross-platform command-line utility that extracts text from documents and copies it directly to your clipboard — one consistent command, regardless of document type.
+**Copy text from any document to your clipboard with one command.**
+
+[![CI](https://github.com/upendra7470/clip/actions/workflows/ci.yml/badge.svg)](https://github.com/upendra7470/clip/actions/workflows/ci.yml)
+[![Security Scan](https://github.com/upendra7470/clip/actions/workflows/security.yml/badge.svg)](https://github.com/upendra7470/clip/actions/workflows/security.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/upendra7470/clip.svg)](https://pkg.go.dev/github.com/upendra7470/clip)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+*Windows · macOS · Linux — no configuration required*
+
+</div>
+
+---
 
 ## Why Clip?
 
-Working with documents across different formats (PDF, DOCX, XLSX, ...) usually means juggling multiple apps just to grab a snippet of text. Clip gives you a single command that opens the file, extracts the text you need — optionally from a specific range of pages, slides, rows, or sections — and puts it straight on your clipboard.
+Extracting text from documents usually means opening heavyweight apps, selecting, copying, and cleaning up formatting along the way. **Clip** does it in a single step: it detects the file type, extracts the text (or just the range you want), and places it straight on your clipboard — ready to paste anywhere.
+
+```bash
+clip report.pdf          # whole document
+clip report.pdf 5-10     # only pages 5-10
+```
 
 ## Features
 
-- **13 document formats** supported out of the box
-- **Range extraction** — copy pages 5-10 of a PDF or slides 2-5 of a deck
-- **Smart file resolution** — searches common locations when given only a filename
-- **Safety hardened** — bounded file reads, zip-bomb protection, nesting-depth limits
-- **Cross-platform** — Linux, macOS, and Windows
-- **Zero configuration** — no config files required
+- **13 file formats** supported out of the box — see the [table](#supported-formats)
+- **Range extraction** with units that make sense per format (pages, slides, rows, sections, values)
+- **Open-ended ranges** — `2-` for "from 2 to the end", `-5` for "the first 5"
+- **Smart filename resolution** — searches your current directory, Downloads, Desktop, and Documents when given a bare filename
+- **Safety hardened** against malicious documents: bounded reads, zip-bomb protection, XML token limits, RTF nesting caps
+- **Cross-platform** — first-class support for Windows, macOS, and Linux
+- **Zero configuration** — one binary, no config files
 
 ## Supported Formats
 
-| Format    | Range Unit |
-|-----------|------------|
-| PDF       | pages      |
-| DOCX      | sections   |
-| PPT / PPTX| slides     |
-| ODT       | paragraphs |
-| RTF       | paragraphs |
-| TXT       | lines      |
-| Markdown  | blocks     |
-| CSV       | rows       |
-| XLSX      | rows       |
-| ODS       | rows       |
-| JSON      | entries    |
-| XML / HTML| entries / blocks |
-| YAML      | values     |
+| Format | Extension(s) | Range Unit |
+|--------|--------------|------------|
+| PDF | `.pdf` | pages |
+| Word | `.docx` | sections |
+| PowerPoint | `.ppt`, `.pptx` | slides |
+| OpenDocument Text | `.odt` | paragraphs |
+| Rich Text | `.rtf` | paragraphs |
+| Plain text | `.txt` | lines |
+| Markdown | `.md` | blocks |
+| CSV | `.csv` | rows |
+| Excel | `.xlsx` | rows |
+| OpenDocument Sheets | `.ods` | rows |
+| JSON | `.json` | entries |
+| XML / HTML | `.xml`, `.html` | entries / blocks |
+| YAML | `.yaml`, `.yml` | values |
+
+## Requirements
+
+- **None at runtime** — Clip is a single static binary.
+- **Linux users:** a clipboard backend is required — `xclip` (X11) or `wl-copy` (Wayland). Install with `sudo apt install xclip`, `sudo dnf install xclip`, or your distribution's equivalent.
+- **Go 1.26+** only if building from source.
 
 ## Installation
 
-### From Source
+### Option 1 — Download a prebuilt binary (all platforms)
+
+Grab the archive for your platform from the [**Releases**](https://github.com/upendra7470/clip/releases) page, then:
+
+**macOS / Linux**
 
 ```bash
-git clone https://github.com/upendra7470/clip.git
-cd clip
-go build -o clip ./cmd/clip
-sudo cp clip /usr/local/bin/clip   # or move it anywhere on your PATH
+tar -xzf clip_*.tar.gz                  # extract
+mkdir -p ~/.local/bin                   # ensure the dir exists
+mv clip_* ~/.local/bin/clip             # move onto your PATH
+chmod +x ~/.local/bin/clip
 ```
 
-### Using go install
+> On Apple Silicon download the `darwin_arm64` build; Intel Macs use `darwin_amd64`.
+
+**Windows**
+
+```powershell
+Expand-Archive clip_*_windows_amd64.zip # extract
+New-Item -ItemType Directory -Force "$HOME\.local\bin" | Out-Null
+Move-Item clip_*_windows_amd64.exe "$HOME\.local\bin\clip.exe"
+```
+
+Then add `%USERPROFILE%\.local\bin` to your PATH (*Settings → System → About → Advanced system settings → Environment Variables*, or):
+
+```powershell
+[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$HOME\.local\bin", "User")
+```
+
+### Option 2 — Install with Go (all platforms)
+
+If you have Go installed, this works identically on Windows, macOS, and Linux:
 
 ```bash
 go install github.com/upendra7470/clip/cmd/clip@latest
 ```
 
-Verify the installation:
+The binary lands in your Go bin directory (`$(go env GOPATH)/bin`). Make sure it's on your PATH.
+
+### Option 3 — Build from source (all platforms)
+
+```bash
+git clone https://github.com/upendra7470/clip.git
+cd clip
+go build -o clip ./cmd/clip        # on Windows use: go build -o clip.exe ./cmd/clip
+```
+
+On macOS/Linux you can also use the Makefile:
+
+```bash
+make build       # build into ./
+make install     # install to ~/.local/bin
+```
+
+### Verify the installation
 
 ```bash
 clip --version
+# clip v1.0.0
 ```
 
-If `clip` is not recognized after installing with `go install`, make sure `$GOPATH/bin` (usually `$HOME/go/bin`) is in your `PATH`.
+<details>
+<summary><b>PATH not set? (click to expand)</b></summary>
+
+**macOS / Linux (bash/zsh)**
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$HOME/go/bin:$PATH"' >> ~/.zshrc   # or ~/.bashrc
+source ~/.zshrc
+```
+
+**Windows (PowerShell)**
+
+```powershell
+[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$HOME\go\bin", "User")
+```
+</details>
 
 ## Usage
 
-```bash
-# Extract everything and copy to clipboard
-clip report.pdf
-
-# Extract a range (pages 5-10) and copy to clipboard
-clip report.pdf 5-10
-
-# Filenames with spaces work when quoted; ranges are detected automatically
-clip "The Brain.docx" 1-3
-clip presentation.pptx 2-5
-clip spreadsheet.xlsx 2-10
-
-# Open-ended ranges: from value 2 to the end
-clip data.yaml 2-
-
-# Show help / version
-clip --help
-clip --version
+```
+clip <filename> [range]
 ```
 
-Clip copies the extracted text to your clipboard by default so you can paste it anywhere immediately.
+| Command | What it does |
+|---------|-------------|
+| `clip document.pdf` | Extract everything → clipboard |
+| `clip report.pdf 5-10` | Pages 5–10 → clipboard |
+| `clip "Q4 Review.pptx" 2-5` | Slides 2–5 (quotes handle spaces) |
+| `clip data.csv -3` | First 3 rows |
+| `clip notes.txt 10-` | From line 10 to the end |
+| `clip --list file.xlsx` | Show the document's range units |
+| `clip --inspect file.docx` | Inspect document structure |
+| `clip --help` / `--version` | Help / version info |
+
+Clip prints what it did and confirms the copy:
+
+```
+$ clip notes.txt 1-2
+✓ Found: notes.txt
+✓ Extracted text successfully
+✓ Copied to clipboard
+```
+
+### Uninstall
+
+```bash
+rm ~/.local/bin/clip        # macOS / Linux
+Remove-Item "$HOME\.local\bin\clip.exe"   # Windows (PowerShell)
+```
+
+## Documentation
+
+- [Installation guide](INSTALLATION.md) — detailed setup, PATH troubleshooting, smart resolution behavior
+- [Contributing guide](CONTRIBUTING.md) — how to add a new format parser
+- [Security policy](SECURITY.md) — how to report vulnerabilities
+- [Changelog](CHANGELOG.md)
 
 ## Development
 
 ```bash
 git clone https://github.com/upendra7470/clip.git
 cd clip
-
-make build    # build the CLI
-make test     # run all tests
-make fmt      # format code
-make vet      # run go vet
-make help     # list all commands
+make test    # run the full test suite
+make vet     # static analysis
+make fmt     # formatting
 ```
 
-The project is plain Go with no code generation. Parsers live in `parsers/<format>/` and share safety utilities from `internal/security`.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines, including how to add a new format parser.
-
-## Security
-
-Clip processes untrusted documents, so the parsers enforce defensive limits (bounded reads, zip-bomb checks, XML token limits, RTF nesting-depth caps). If you discover a security vulnerability, please follow the process in [SECURITY.md](SECURITY.md) rather than opening a public issue.
-
-## Roadmap
-
-- OCR support for images
-- Batch processing of multiple files
-- Output to stdout / files (`--output`)
-- Plugin system for additional formats
+CI builds and tests every change on Ubuntu, macOS, and Windows; releases are automatically built for all major platforms when a `v*` tag is pushed.
 
 ## License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
+Distributed under the MIT License. See [`LICENSE`](LICENSE) for details.

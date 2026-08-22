@@ -2,7 +2,18 @@
 
 ## Quick Installation
 
-### Using Make (Recommended)
+### Download a prebuilt binary (all platforms)
+
+Download the archive for your platform from the [Releases](https://github.com/upendra7470/clip/releases) page and extract it:
+
+- **macOS Apple Silicon:** `clip_*_darwin_arm64.tar.gz`
+- **macOS Intel:** `clip_*_darwin_amd64.tar.gz`
+- **Linux:** `clip_*_linux_amd64.tar.gz` (or `linux_arm64`)
+- **Windows:** `clip_*_windows_amd64.zip`
+
+Then follow the steps in the [README](README.md#option-1--download-a-prebuilt-binary-all-platforms).
+
+### Using Make (macOS / Linux)
 
 ```bash
 make install
@@ -14,7 +25,7 @@ This will:
 3. Make sure the directory exists
 4. Clean up build artifacts
 
-### Using go install
+### Using go install (all platforms)
 
 ```bash
 go install github.com/upendra7470/clip/cmd/clip@latest
@@ -22,7 +33,7 @@ go install github.com/upendra7470/clip/cmd/clip@latest
 
 This installs the binary to your `$GOPATH/bin` directory. Ensure this directory is in your PATH.
 
-### Manual Installation
+### Build from Source (all platforms)
 
 1. Clone the repository:
    ```bash
@@ -32,9 +43,26 @@ This installs the binary to your `$GOPATH/bin` directory. Ensure this directory 
 
 2. Build and install:
    ```bash
+   # macOS / Linux
    go build -o clip ./cmd/clip
-   sudo mv clip /usr/local/bin/clip
+   mv clip ~/.local/bin/clip
+
+   # Windows (PowerShell)
+   go build -o clip.exe ./cmd/clip
+   Move-Item clip.exe "$HOME\.local\bin\"
    ```
+
+## Linux Clipboard Backend
+
+Clip requires `xclip` (X11) or `wl-copy` (Wayland) on Linux:
+
+```bash
+sudo apt install xclip      # Debian / Ubuntu
+sudo dnf install xclip      # Fedora
+sudo pacman -S xclip        # Arch
+```
+
+No backend needed on macOS (`pbcopy`) or Windows (`clip.exe`) — both are built in.
 
 ## PATH Setup
 
