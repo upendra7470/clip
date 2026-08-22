@@ -32,7 +32,8 @@ jobs:
       - name: Build release binaries
         run: |
           set -eu
-          VERSION="${GITHUB_REF_NAME}"
+          # Strip the leading "v" so --version prints "clip 1.1.0", not "clip vv1.1.0"
+          VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dist
 
           build() {
@@ -43,7 +44,7 @@ jobs:
 
             echo "Building ${name}..."
             CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
-              go build -trimpath -ldflags="-s -w" -o "$out" ./cmd/clip
+              go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o "$out" ./cmd/clip
           }
 
           build linux   amd64

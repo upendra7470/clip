@@ -2,16 +2,17 @@
 # Provides build, test, and installation commands for the Clip CLI tool
 
 BIN_DIR := $(HOME)/.local/bin
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//')
 
 .PHONY: all build install uninstall clean test fmt vet help
 
 # Default target
 all: build
 
-# Build the Clip binary
+# Build the Clip binary with the version stamped from git
 build:
 	@echo "Building Clip..."
-	@go build -o clip ./cmd/clip
+	@go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o clip ./cmd/clip
 	@echo "Built: ./clip"
 
 # Install Clip to ~/.local/bin

@@ -34,7 +34,9 @@ import (
 	"github.com/upendra7470/clip/parsers/yaml"
 )
 
-const version = "1.0.0"
+// version is set at build time via -ldflags "-X main.version=<version>".
+// Builds without injection (plain `go build`) report "dev".
+var version = "dev"
 
 func Run(args []string, stdout, stderr io.Writer) int {
 	// Create a new FlagSet to avoid flag redefinition
