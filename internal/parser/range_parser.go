@@ -133,13 +133,13 @@ func ValidateRangeAgainstTotal(r Range, totalUnits int) error {
 	if r.Start < 1 {
 		return fmt.Errorf("range values must start from 1")
 	}
-	if r.End < 1 {
+	if r.End != -1 && r.End < 1 {
 		return fmt.Errorf("range values must start from 1")
 	}
-	if r.Start > r.End {
+	if r.Start != -1 && r.End != -1 && r.Start > r.End {
 		return fmt.Errorf("invalid range: start value must not be greater than end value")
 	}
-	if r.End > totalUnits {
+	if r.End != -1 && r.End > totalUnits {
 		return fmt.Errorf("requested range exceeds document unit count (document has %d units, requested %d-%d)", totalUnits, r.Start, r.End)
 	}
 	return nil

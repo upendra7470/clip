@@ -27,4 +27,12 @@ const (
 
 	// MaxTokenCount limits the number of decoder tokens for streaming parsers.
 	MaxTokenCount = 1_000_000
+
+	// MaxImageDimension limits the width or height of an image before OCR.
+	// This prevents decompression and memory exhaustion from pathologically
+	// large images.
+
+	// MaxImagePixels limits the total pixel count of an image.
+
+	// MaxOCRDuration bounds how long a single OCR operation may run.
 )

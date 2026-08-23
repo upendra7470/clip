@@ -9,6 +9,7 @@ import (
 	"github.com/upendra7470/clip/internal/detect"
 	"github.com/upendra7470/clip/internal/parser"
 	"github.com/upendra7470/clip/internal/registry"
+	"github.com/upendra7470/clip/internal/security"
 )
 
 // Clipboard defines the interface for clipboard operations.
@@ -42,9 +43,8 @@ func (app *Application) Extract(ctx context.Context, filePath string) error {
 func (app *Application) ExtractWithRange(ctx context.Context, filePath string, rangeObj *parser.Range) error {
 	// Step 0: Guard file size (prevent huge files)
 	if info, statErr := os.Stat(filePath); statErr == nil {
-		const maxSize int64 = 500 * 1024 * 1024 // 500 MiB
-		if info.Size() > maxSize {
-			return fmt.Errorf("file size %d bytes exceeds maximum allowed %d bytes", info.Size(), maxSize)
+		if info.Size() > security.MaxInputFileSize {
+			return fmt.Errorf("file size %d bytes exceeds maximum allowed %d bytes", info.Size(), security.MaxInputFileSize)
 		}
 	} else if !os.IsNotExist(statErr) && !os.IsPermission(statErr) {
 		// If we can't stat for other reasons, return the error

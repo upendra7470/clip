@@ -8,7 +8,7 @@ import (
 
 // MaxInputFileSize defines the maximum allowed size for input files.
 // This is a safety limit to prevent memory exhaustion from pathological files.
-const MaxInputFileSize = 100 * 1024 * 1024 // 100 MiB
+const MaxInputFileSize = 50 * 1024 * 1024 // 50 MiB
 
 // ErrFileTooLarge is returned when a file exceeds the maximum allowed size.
 var ErrFileTooLarge = fmt.Errorf("file exceeds maximum allowed size of %d bytes", MaxInputFileSize)

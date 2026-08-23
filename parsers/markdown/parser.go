@@ -109,10 +109,13 @@ func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, [
 // ParseRange extracts text from a specific section range in a Markdown file.
 func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
 	// Validate section range
-	if start < 1 || end < 1 {
+	if start < 1 {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("section numbers must start from 1, got %d-%d", start, end), nil)
 	}
-	if end < start {
+	if end != -1 && end < 1 {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("section numbers must start from 1, got %d-%d", start, end), nil)
+	}
+	if end != -1 && end < start {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid section range: start section must not be greater than end section (got %d-%d)", start, end), nil)
 	}
 
@@ -135,6 +138,9 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	sections := extractSections(text)
 
 	// Validate range against actual section count
+	if end == -1 {
+		end = len(sections)
+	}
 	if start > len(sections) || end > len(sections) {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested section range exceeds file section count (file has %d sections, requested %d-%d)", len(sections), start, end), nil)
 	}

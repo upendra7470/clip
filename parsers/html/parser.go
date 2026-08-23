@@ -153,10 +153,13 @@ func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, [
 // ParseRange extracts text from a specific text block range in an HTML file.
 func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
 	// Validate text block range
-	if start < 1 || end < 1 {
+	if start < 1 {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("text block numbers must start from 1, got %d-%d", start, end), nil)
 	}
-	if end < start {
+	if end != -1 && end < 1 {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("text block numbers must start from 1, got %d-%d", start, end), nil)
+	}
+	if end != -1 && end < start {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid text block range: start block must not be greater than end block (got %d-%d)", start, end), nil)
 	}
 
@@ -198,6 +201,9 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	}
 
 	// Validate range against actual block count
+	if end == -1 {
+		end = len(nonEmptyBlocks)
+	}
 	if start > len(nonEmptyBlocks) || end > len(nonEmptyBlocks) {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested text block range exceeds document block count (document has %d blocks, requested %d-%d)", len(nonEmptyBlocks), start, end), nil)
 	}

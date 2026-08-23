@@ -77,16 +77,26 @@ func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) 
 
 // ParseWithContext implements the parser.Parser interface method for parsing with context
 func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
-	// Read the file content
-	content, err := os.ReadFile(req.File)
+	file, err := os.Open(req.File)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return parser.ParseResult{}, fmt.Errorf("file %s does not exist: %w", req.File, err)
 		}
 		return parser.ParseResult{}, fmt.Errorf("error reading file %s: %w", req.File, err)
 	}
-	if len(content) > parser.MaxFileSize {
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return parser.ParseResult{}, fmt.Errorf("error reading file %s: %w", req.File, err)
+	}
+	if info.Size() > parser.MaxFileSize {
 		return parser.ParseResult{}, fmt.Errorf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize)
+	}
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return parser.ParseResult{}, fmt.Errorf("error reading file %s: %w", req.File, err)
 	}
 
 	// Parse CSV content

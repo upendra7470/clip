@@ -237,11 +237,6 @@ func getHomeDir() string {
 
 // getDownloadsDir returns the Downloads directory path.
 func getDownloadsDir() string {
-	// Check for test directory first
-	testDir := filepath.Join(".", "test_downloads")
-	if _, err := os.Stat(testDir); err == nil {
-		return testDir
-	}
 	return filepath.Join(getHomeDir(), "Downloads")
 }
 
@@ -252,10 +247,5 @@ func getDesktopDir() string {
 
 // getDocumentsDir returns the Documents directory path.
 func getDocumentsDir() string {
-	// Check for test directory first
-	testDir := filepath.Join(".", "test_documents")
-	if _, err := os.Stat(testDir); err == nil {
-		return testDir
-	}
 	return filepath.Join(getHomeDir(), "Documents")
 }

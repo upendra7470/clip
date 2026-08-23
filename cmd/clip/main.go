@@ -209,21 +209,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// Create context with timeout to prevent hanging
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	// Resolve file path using the resolver
 	resolvedPath, err := fileResolver.Resolve(ctx, filePath)
 	if err != nil {
-		// Handle special case for multiple files selection
-		if strings.HasPrefix(err.Error(), "selected:") {
-			// Extract the selected file path
-			selectedPath := strings.TrimPrefix(err.Error(), "selected:")
-			resolvedPath = selectedPath
-		} else {
-			fmt.Fprintf(stderr, "Error: %v\n", err)
-			return 1
-		}
+		fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
 	}
 
 	// Detect file type to determine range unit for success message
@@ -391,6 +384,7 @@ func showHelp() {
 	fmt.Println("  XML       -> entries")
 	fmt.Println("  HTML      -> blocks")
 	fmt.Println("  YAML      -> values")
+	fmt.Println("  WebP/TIFF")
 	fmt.Println()
 	fmt.Println("Additional commands:")
 	fmt.Println("  clip --version")
