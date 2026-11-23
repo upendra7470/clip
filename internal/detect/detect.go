@@ -21,13 +21,16 @@ func Type(path string) (filetype.FileType, error) {
 
 	extType := typeFromExtension(ext)
 
-	// Attempt magic-byte validation for ambiguous or unsupported extensions.
+	// A recognized extension is authoritative. Text formats share common
+	// leading characters, so treating "[" as JSON or "<" as XML would
+	// misclassify valid Markdown and HTML files.
+	if extType != "" {
+		return extType, nil
+	}
+
+	// Try magic-byte detection for files with an unknown extension.
 	f, err := os.Open(path)
 	if err != nil {
-		// Can't read the file — fall back to extension-only.
-		if extType != "" {
-			return extType, nil
-		}
 		return "", fmt.Errorf("unsupported file extension: .%s", ext)
 	}
 	defer f.Close()
@@ -38,13 +41,6 @@ func Type(path string) (filetype.FileType, error) {
 
 	magicType := typeFromMagic(header)
 
-	if magicType != "" && extType != magicType {
-		// Magic bytes disagree with extension — trust the bytes.
-		return magicType, nil
-	}
-	if extType != "" {
-		return extType, nil
-	}
 	if magicType != "" {
 		return magicType, nil
 	}
@@ -91,6 +87,8 @@ func typeFromExtension(ext string) filetype.FileType {
 		return filetype.FileTypeHTML
 	case "yaml", "yml":
 		return filetype.FileTypeYAML
+	case "png", "jpg", "jpeg", "gif", "bmp", "tif", "tiff", "webp":
+		return filetype.FileTypeImage
 	default:
 		return ""
 	}
@@ -116,30 +114,30 @@ func typeFromMagic(header []byte) filetype.FileType {
 
 	// PNG: 0x89 P N G
 	if header[0] == 0x89 && header[1] == 'P' && header[2] == 'N' && header[3] == 'G' {
-		return "" // image type not registered without OCR
+		return filetype.FileTypeImage
 	}
 
 	// JPEG: 0xFF 0xD8 0xFF
 	if header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF {
-		return "" // image type not registered without OCR
+		return filetype.FileTypeImage
 	}
 
 	// GIF: GIF8
 	if header[0] == 'G' && header[1] == 'I' && header[2] == 'F' && header[3] == '8' {
-		return "" // image type not registered without OCR
+		return filetype.FileTypeImage
 	}
 
 	// TIFF: II*\0 or MM\0*
 	if (header[0] == 'I' && header[1] == 'I' && header[2] == 0x2A && header[3] == 0x00) ||
 		(header[0] == 'M' && header[1] == 'M' && header[2] == 0x00 && header[3] == 0x2A) {
-		return "" // image type not registered without OCR
+		return filetype.FileTypeImage
 	}
 
 	// WebP: RIFF....WEBP
 	if len(header) >= 12 &&
 		header[0] == 'R' && header[1] == 'I' && header[2] == 'F' && header[3] == 'F' &&
 		header[8] == 'W' && header[9] == 'E' && header[10] == 'B' && header[11] == 'P' {
-		return "" // image type not registered without OCR
+		return filetype.FileTypeImage
 	}
 
 	// ZIP: PK\x03\x04 — could be DOCX, XLSX, PPTX, ODS, ODT, ODP.

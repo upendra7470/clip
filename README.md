@@ -2,7 +2,7 @@
 
 # Clip
 
-**Copy text from any document to your clipboard with one command.**
+**Copy text from documents and images to your clipboard with one command.**
 
 [![CI](https://github.com/upendra7470/clip/actions/workflows/ci.yml/badge.svg)](https://github.com/upendra7470/clip/actions/workflows/ci.yml)
 [![Security Scan](https://github.com/upendra7470/clip/actions/workflows/security.yml/badge.svg)](https://github.com/upendra7470/clip/actions/workflows/security.yml)
@@ -22,17 +22,20 @@ Extracting text from documents usually means opening heavyweight apps, selecting
 ```bash
 clip report.pdf          # whole document
 clip report.pdf 5-10     # only pages 5-10
+clip receipt.png         # OCR an image
 ```
 
 ## Features
 
-- **13 file formats** supported out of the box — see the [table](#supported-formats)
+- **Document extraction and image OCR** behind the same `clip` command
+- **Scanned PDF fallback** — automatically runs OCR when a PDF has no embedded text
 - **Range extraction** with units that make sense per format (pages, slides, rows, sections, values)
 - **Open-ended ranges** — `2-` for "from 2 to the end", `-5` for "the first 5"
 - **Smart filename resolution** — searches your current directory, Downloads, Desktop, and Documents when given a bare filename
 - **Safety hardened** against malicious documents: bounded reads, zip-bomb protection, XML token limits, RTF nesting caps
 - **Cross-platform** — first-class support for Windows, macOS, and Linux
-- **Zero configuration** — one binary, no config files
+- **Fast range extraction** — streams TXT, CSV, XLSX, and selected PPTX content
+- **Zero configuration for documents** — one binary, no config files
 
 ## Supported Formats
 
@@ -51,12 +54,41 @@ clip report.pdf 5-10     # only pages 5-10
 | JSON | `.json` | entries |
 | XML / HTML | `.xml`, `.html` | entries / blocks |
 | YAML | `.yaml`, `.yml` | values |
+| Images with OCR | `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tif`, `.tiff`, `.webp` | full image |
 
 ## Requirements
 
-- **None at runtime** — Clip is a single static binary.
+- **Document extraction:** no additional runtime dependency.
+- **Image OCR:** [Tesseract OCR](https://tesseract-ocr.github.io/) must be installed and available on `PATH`.
+- **Scanned PDF OCR:** Poppler's `pdftoppm` renderer is also required.
 - **Linux users:** a clipboard backend is required — `xclip` (X11) or `wl-copy` (Wayland). Install with `sudo apt install xclip`, `sudo dnf install xclip`, or your distribution's equivalent.
 - **Go 1.26+** only if building from source.
+
+### Enable OCR
+
+```bash
+# Ubuntu / Debian
+sudo apt install tesseract-ocr
+sudo apt install poppler-utils
+
+# macOS
+brew install tesseract
+brew install poppler
+
+# Windows
+winget install UB-Mannheim.TesseractOCR
+winget install oschwartz10612.Poppler
+
+clip --ocr-status
+clip receipt.png
+```
+
+Clip automatically recognizes supported image files. Use `--ocr-lang` for installed Tesseract languages and `--ocr-psm` for page layout tuning:
+
+```bash
+clip --ocr-lang eng receipt.png
+clip --ocr-lang hin --ocr-psm 6 handwritten-note.png
+```
 
 ## Installation
 
@@ -151,6 +183,9 @@ clip <filename> [range]
 | `clip "Q4 Review.pptx" 2-5` | Slides 2–5 (quotes handle spaces) |
 | `clip data.csv -3` | First 3 rows |
 | `clip notes.txt 10-` | From line 10 to the end |
+| `clip receipt.png` | OCR the image → clipboard |
+| `clip --ocr-lang deu scan.tiff` | OCR using German language data |
+| `clip --ocr-status` | Verify the OCR engine is ready |
 | `clip --list file.xlsx` | Show the document's range units |
 | `clip --inspect file.docx` | Inspect document structure |
 | `clip --help` / `--version` | Help / version info |

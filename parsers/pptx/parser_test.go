@@ -1,7 +1,9 @@
 package pptx
 
 import (
+	"archive/zip"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,6 +96,39 @@ func TestParseRangeOpenEnded(t *testing.T) {
 	// This would require creating a valid PPTX structure, which is complex
 	// For now, we'll skip this test
 	t.Skip("Skipping open-ended range test - requires complex PPTX structure")
+}
+
+func TestParseRangeUsesNumericSlideOrder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ordered.pptx")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := zip.NewWriter(file)
+	for _, slide := range []struct {
+		number int
+		text   string
+	}{{10, "ten"}, {2, "two"}, {1, "one"}} {
+		entry, err := archive.Create(fmt.Sprintf("ppt/slides/slide%d.xml", slide.number))
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(entry, "<p:sld xmlns:p=\"p\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><a:t>%s</a:t></p:sld>", slide.text)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := new(Parser).ParseRange(context.Background(), parser.ParseRequest{File: path}, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "one\n\ntwo" {
+		t.Fatalf("Text = %q, want numeric slide order", result.Text)
+	}
 }
 
 // containsError checks if a string contains a substring.

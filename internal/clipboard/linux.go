@@ -4,6 +4,7 @@ package clipboard
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"time"
@@ -17,14 +18,26 @@ func copyPlatform(text string) error {
 // copyLinux copies text to the clipboard on Linux using xclip (X11)
 // or wl-copy (Wayland).
 func copyLinux(text string) error {
-	// Try xclip first (X11)
-	if path, err := exec.LookPath("xclip"); err == nil {
-		return runCopyCommand(path, []string{"-selection", "clipboard"}, text)
+	var failures []error
+
+	if path, err := exec.LookPath("wl-copy"); err == nil {
+		if err := runCopyCommand(path, nil, text); err == nil {
+			return nil
+		} else {
+			failures = append(failures, err)
+		}
 	}
 
-	// Fall back to wl-copy (Wayland)
-	if path, err := exec.LookPath("wl-copy"); err == nil {
-		return runCopyCommand(path, nil, text)
+	if path, err := exec.LookPath("xclip"); err == nil {
+		if err := runCopyCommand(path, []string{"-selection", "clipboard"}, text); err == nil {
+			return nil
+		} else {
+			failures = append(failures, err)
+		}
+	}
+
+	if len(failures) > 0 {
+		return fmt.Errorf("Linux clipboard backends failed: %v", errors.Join(failures...))
 	}
 
 	return fmt.Errorf("Linux clipboard unavailable: install xclip (X11) or wl-copy (Wayland)")

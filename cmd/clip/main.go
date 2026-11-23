@@ -21,6 +21,7 @@ import (
 	"github.com/upendra7470/clip/parsers/html"
 	"github.com/upendra7470/clip/parsers/json"
 	"github.com/upendra7470/clip/parsers/markdown"
+	"github.com/upendra7470/clip/parsers/ocr"
 	"github.com/upendra7470/clip/parsers/ods"
 	"github.com/upendra7470/clip/parsers/odt"
 	"github.com/upendra7470/clip/parsers/pdf"
@@ -47,6 +48,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	versionFlag := flagSet.Bool("version", false, "Show version information")
 	listFlag := flagSet.Bool("list", false, "List document units (pages, sections, slides, etc.)")
 	inspectFlag := flagSet.Bool("inspect", false, "Inspect document units (pages, sections, slides, etc.)")
+	ocrLanguage := flagSet.String("ocr-lang", "eng", "Tesseract OCR language code")
+	ocrPageSegMode := flagSet.Int("ocr-psm", 3, "Tesseract page segmentation mode (0-13)")
+	ocrStatus := flagSet.Bool("ocr-status", false, "Show OCR engine availability")
 	err := flagSet.Parse(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "Error parsing flags: %v\n", err)
@@ -63,6 +67,24 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if *versionFlag {
 		fmt.Fprintf(stdout, "clip v%s\n", version)
 		return 0
+	}
+
+	if *ocrStatus {
+		if path, ok := ocr.Available(); ok {
+			fmt.Fprintf(stdout, "Image OCR ready: %s\n", path)
+			if renderer, available := ocr.PDFRendererAvailable(); available {
+				fmt.Fprintf(stdout, "Scanned PDF OCR ready: %s\n", renderer)
+			} else {
+				fmt.Fprintln(stdout, "Scanned PDF OCR unavailable: install Poppler (pdftoppm)")
+			}
+			return 0
+		}
+		fmt.Fprintln(stderr, "OCR unavailable: install Tesseract and ensure it is on PATH")
+		return 1
+	}
+	if *ocrPageSegMode < 0 || *ocrPageSegMode > 13 {
+		fmt.Fprintln(stderr, "Error: --ocr-psm must be between 0 and 13")
+		return 1
 	}
 
 	// Set up the parser registry
@@ -83,7 +105,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// Register PDF parser
-	pdfParser := &pdf.Parser{}
+	pdfParser := pdf.NewParser(*ocrLanguage, *ocrPageSegMode)
 	if err := reg.Register(pdfParser.FileType(), pdfParser); err != nil {
 		fmt.Fprintf(stderr, "Failed to register PDF parser: %v\n", err)
 		return 1
@@ -173,6 +195,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	ocrParser := ocr.NewParser(*ocrLanguage, *ocrPageSegMode)
+	if err := reg.Register(ocrParser.FileType(), ocrParser); err != nil {
+		fmt.Fprintf(stderr, "Failed to register OCR parser: %v\n", err)
+		return 1
+	}
+
 	// Create resolver
 	fileResolver := resolver.New()
 
@@ -235,7 +263,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	// Handle --list or --inspect flag: inspect document units
 	if *listFlag || *inspectFlag {
-		listDocumentUnits(resolvedPath, parserObj, ctx)
+		if err := listDocumentUnits(resolvedPath, parserObj, ctx); err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
 		return 0
 	}
 
@@ -282,7 +313,7 @@ func main() {
 }
 
 // listDocumentUnits prints the available units in a document.
-func listDocumentUnits(resolvedPath string, parserObj parser.Parser, ctx context.Context) {
+func listDocumentUnits(resolvedPath string, parserObj parser.Parser, ctx context.Context) error {
 	fmt.Printf("Document: %s\n", resolvedPath)
 
 	// Detect format from file extension
@@ -301,8 +332,7 @@ func listDocumentUnits(resolvedPath string, parserObj parser.Parser, ctx context
 	if lister, ok := parserObj.(parser.DocumentLister); ok {
 		total, unitNames, err := lister.ListUnits(ctx, parser.ParseRequest{File: resolvedPath})
 		if err != nil {
-			fmt.Printf("Error listing units: %v\n", err)
-			return
+			return fmt.Errorf("listing document units: %w", err)
 		}
 
 		// Print unit names
@@ -321,6 +351,7 @@ func listDocumentUnits(resolvedPath string, parserObj parser.Parser, ctx context
 	} else {
 		fmt.Printf("%s: %d\n", capitalizeUnit(rangeUnit), 0)
 	}
+	return nil
 }
 
 // capitalizeUnit returns the plural form of the unit name for display.
@@ -384,11 +415,16 @@ func showHelp() {
 	fmt.Println("  XML       -> entries")
 	fmt.Println("  HTML      -> blocks")
 	fmt.Println("  YAML      -> values")
-	fmt.Println("  WebP/TIFF")
+	fmt.Println("  Images    -> OCR (PNG, JPEG, GIF, BMP, TIFF, WebP)")
 	fmt.Println()
 	fmt.Println("Additional commands:")
 	fmt.Println("  clip --version")
 	fmt.Println("  clip --help")
+	fmt.Println("  clip --ocr-status")
+	fmt.Println()
+	fmt.Println("OCR options (place before the filename):")
+	fmt.Println("  --ocr-lang <code>   Tesseract language, default: eng")
+	fmt.Println("  --ocr-psm <0-13>    Page segmentation mode, default: 3")
 }
 
 // getFilePathAndRangeFromArgs extracts the file path and optional range argument from parsed flag arguments.

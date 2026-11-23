@@ -1,6 +1,8 @@
 package detect
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/upendra7470/clip/internal/filetype"
@@ -37,6 +39,9 @@ func TestType(t *testing.T) {
 		{"HTM", "page.htm", filetype.FileTypeHTML, false, ""},
 		{"JSON", "data.json", filetype.FileTypeJSON, false, ""},
 		{"XML", "config.xml", filetype.FileTypeXML, false, ""},
+		{"PNG image", "scan.png", filetype.FileTypeImage, false, ""},
+		{"JPEG image", "photo.jpeg", filetype.FileTypeImage, false, ""},
+		{"TIFF image", "scan.tiff", filetype.FileTypeImage, false, ""},
 
 		// Error cases
 		{"No extension", "document", filetype.FileType(""), true, "no file extension found"},
@@ -61,6 +66,33 @@ func TestType(t *testing.T) {
 				if got != tt.wantType {
 					t.Errorf("Type(%q) = %q, want %q", tt.path, got, tt.wantType)
 				}
+			}
+		})
+	}
+}
+
+func TestKnownTextExtensionWinsOverAmbiguousContent(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    filetype.FileType
+	}{
+		{"notes.md", "[link](https://example.com)", filetype.FileTypeMarkdown},
+		{"index.html", "<html><body>Hello</body></html>", filetype.FileTypeHTML},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), tt.name)
+			if err := os.WriteFile(path, []byte(tt.content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			got, err := Type(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Fatalf("Type() = %q, want %q", got, tt.want)
 			}
 		})
 	}

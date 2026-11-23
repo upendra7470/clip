@@ -64,6 +64,30 @@ sudo pacman -S xclip        # Arch
 
 No backend needed on macOS (`pbcopy`) or Windows (`clip.exe`) — both are built in.
 
+## OCR Engine
+
+Document extraction works with the Clip binary alone. Image OCR uses Tesseract:
+
+```bash
+# Ubuntu / Debian
+sudo apt install tesseract-ocr
+sudo apt install poppler-utils
+
+# Fedora
+sudo dnf install tesseract
+sudo dnf install poppler-utils
+
+# macOS
+brew install tesseract
+brew install poppler
+
+# Windows
+winget install UB-Mannheim.TesseractOCR
+winget install oschwartz10612.Poppler
+```
+
+Verify the installation with `clip --ocr-status`. Tesseract handles images, while Poppler enables automatic OCR fallback for scanned PDFs. Extra recognition languages use Tesseract language packs and the `--ocr-lang` option.
+
 ## PATH Setup
 
 ### Verify Installation
