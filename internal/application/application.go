@@ -59,7 +59,7 @@ func (app *Application) ExtractWithRange(ctx context.Context, filePath string, r
 		if ext == "" {
 			ext = "unknown"
 		}
-		return fmt.Errorf("unsupported file type: %s\n\nsupported formats:\nPDF, DOCX, TXT, Markdown, PPTX, CSV, XLSX, JSON, XML, HTML, YAML, RTF, ODT, ODS, PPT", ext)
+		return fmt.Errorf("unsupported file type: %s\n\nsupported formats:\nPDF, DOCX, TXT, Markdown, PPTX, CSV, XLSX, JSON, XML, HTML, YAML, RTF, ODT, ODS, PPT, PNG, JPEG, GIF, BMP, TIFF, WebP", ext)
 	}
 
 	// Step 2: Lookup parser

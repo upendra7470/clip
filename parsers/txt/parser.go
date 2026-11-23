@@ -1,6 +1,7 @@
 package txt
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -143,65 +144,72 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	// -1 means "from start" for start, or "to end" for end
 	// These will be normalized by the parser implementations
 
-	// Read the entire file content
-	content, err := os.ReadFile(req.File)
+	file, err := os.Open(req.File)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s does not exist", req.File), err)
 		}
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
 	}
-	if len(content) > parser.MaxFileSize {
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("error reading file %s: %v", req.File, err), err)
+	}
+	if info.Size() > parser.MaxFileSize {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize), nil)
 	}
-	if os.IsNotExist(err) {
-		return parser.ParseResult{}, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
-	}
-	if os.IsPermission(err) {
-		return parser.ParseResult{}, wrapError("Could not open TXT file:\n"+req.File+"\n\nReason:\npermission denied", err)
-	}
-	// Validate UTF-8
-	if !isValidUTF8(content) {
-		return parser.ParseResult{}, wrapError("invalid UTF-8", nil)
-	}
-
-	// Split content into lines
-	lines := strings.Split(string(content), "\n")
 
 	// Handle sentinel values
 	if start == -1 {
 		start = 1 // Start from beginning
-	}
-	if end == -1 {
-		end = len(lines) // End at last line
 	}
 
 	// Validate line range
 	if start < 1 {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("line numbers must start from 1, got %d-%d", start, end), nil)
 	}
-	if end < 1 {
+	if end != -1 && end < 1 {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("line numbers must start from 1, got %d-%d", start, end), nil)
 	}
-	if end < start {
+	if end != -1 && end < start {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid line range: start line must not be greater than end line (got %d-%d)", start, end), nil)
 	}
 
-	// Validate range against actual line count
-	if start > len(lines) {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested line range exceeds file line count (file has %d lines, requested %d-%d)", len(lines), start, end), nil)
-	}
-	if end > len(lines) {
-		end = len(lines) // Adjust end to last line if it exceeds
-	}
-
-	// Extract only the requested line range
+	// Stream lines and stop when a bounded range is complete.
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), parser.MaxFileSize)
 	var result strings.Builder
-	for i := start - 1; i < end && i < len(lines); i++ {
-		if i > start-1 {
+	lineNumber := 0
+	written := 0
+	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return parser.ParseResult{}, err
+		}
+		lineNumber++
+		if lineNumber < start {
+			continue
+		}
+		if end != -1 && lineNumber > end {
+			break
+		}
+		if !isValidUTF8(scanner.Bytes()) {
+			return parser.ParseResult{}, wrapError("invalid UTF-8", nil)
+		}
+		if written > 0 {
 			result.WriteString("\n")
 		}
-		result.WriteString(lines[i])
+		result.Write(scanner.Bytes())
+		written++
+		if end != -1 && lineNumber == end {
+			break
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return parser.ParseResult{}, wrapError("error reading text file", err)
+	}
+	if lineNumber < start {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested line range exceeds file line count (file has %d lines, requested %d-%d)", lineNumber, start, end), nil)
 	}
 
 	if result.Len() == 0 {

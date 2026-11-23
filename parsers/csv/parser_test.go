@@ -380,3 +380,19 @@ Bob,22`)
 func containsError(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
+
+func TestParseRangeStopsAfterRequestedRows(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "large.csv")
+	content := "a,b\nc,d\n\"unterminated"
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := new(Parser).ParseRange(context.Background(), parser.ParseRequest{File: path}, 1, 2)
+	if err != nil {
+		t.Fatalf("ParseRange() error = %v", err)
+	}
+	if result.Text != "a, b\nc, d" {
+		t.Fatalf("Text = %q", result.Text)
+	}
+}

@@ -1,5 +1,7 @@
 package security
 
+import "time"
+
 // Security limits for document processing.
 // These constants are centralized to be shared across all parsers.
 const (
@@ -31,8 +33,11 @@ const (
 	// MaxImageDimension limits the width or height of an image before OCR.
 	// This prevents decompression and memory exhaustion from pathologically
 	// large images.
+	MaxImageDimension = 20_000
 
 	// MaxImagePixels limits the total pixel count of an image.
+	MaxImagePixels = 100_000_000
 
 	// MaxOCRDuration bounds how long a single OCR operation may run.
+	MaxOCRDuration = 2 * time.Minute
 )

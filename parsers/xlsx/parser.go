@@ -3,7 +3,6 @@ package xlsx
 import (
 	"archive/zip"
 	"context"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -79,18 +78,6 @@ func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) 
 	return nil, fmt.Errorf("not implemented")
 }
 
-// worksheetRow represents a parsed row with cell texts.
-type worksheetRow struct {
-	rowNum int
-	cells  []string
-}
-
-// worksheetData represents parsed worksheet content.
-type worksheetData struct {
-	name string
-	rows []worksheetRow
-}
-
 // ParseWithContext implements the parser.Parser interface method for parsing with context
 func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
 	lines, err := readXLSXLines(req.File)
@@ -136,9 +123,12 @@ func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, [
 	defer file.Close()
 
 	// Get file info for size
-	_, err = file.Stat()
+	fileInfo, err := file.Stat()
 	if err != nil {
 		return 0, nil, wrapError("failed to get file info", err)
+	}
+	if err := validateXLSXArchive(file, fileInfo.Size()); err != nil {
+		return 0, nil, err
 	}
 
 	// Read the XLSX file
@@ -146,6 +136,7 @@ func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, [
 	if err != nil {
 		return 0, nil, wrapError("failed to parse XLSX file", err)
 	}
+	defer xlsxFile.Close()
 
 	// Get all sheet names
 	sheetNames := xlsxFile.GetSheetList()
@@ -157,11 +148,23 @@ func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, [
 	var totalRows int
 	var sheetInfo []string
 	for _, sheetName := range sheetNames {
-		rows, err := xlsxFile.GetRows(sheetName)
+		rows, err := xlsxFile.Rows(sheetName)
 		if err != nil {
 			continue
 		}
-		rowCount := len(rows)
+		rowCount := 0
+		for rows.Next() {
+			if err := ctx.Err(); err != nil {
+				rows.Close()
+				return 0, nil, err
+			}
+			rowCount++
+		}
+		if err := rows.Error(); err != nil {
+			rows.Close()
+			return 0, nil, wrapError(fmt.Sprintf("failed to count rows in sheet %s", sheetName), err)
+		}
+		rows.Close()
 		totalRows += rowCount
 		sheetInfo = append(sheetInfo, fmt.Sprintf("%s (%d rows)", sheetName, rowCount))
 	}
@@ -187,7 +190,7 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid row range: start row must not be greater than end row (got %d-%d)", start, end), nil)
 	}
 
-	lines, err := readXLSXLines(req.File)
+	lines, err := readXLSXRows(req.File, start, end)
 	if err != nil {
 		return parser.ParseResult{}, err
 	}
@@ -196,21 +199,12 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 		return parser.ParseResult{}, wrapError("no readable content found in XLSX", nil)
 	}
 
-	// Normalize end value if it's -1
-	if end == -1 {
-		end = len(lines)
-	}
-
-	if start > len(lines) || end > len(lines) {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested row range exceeds XLSX row count (file has %d rows, requested %d-%d)", len(lines), start, end), nil)
-	}
-
 	var result strings.Builder
-	for i := start - 1; i < end && i < len(lines); i++ {
-		if i > start-1 {
+	for i, line := range lines {
+		if i > 0 {
 			result.WriteString("\n")
 		}
-		result.WriteString(strings.TrimSpace(lines[i]))
+		result.WriteString(strings.TrimSpace(line))
 	}
 
 	if result.Len() == 0 {
@@ -225,6 +219,10 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 // readXLSXLines reads an XLSX file and returns logical rows.
 // XLSX files are ZIP archives; anything else is rejected as invalid.
 func readXLSXLines(path string) ([]string, error) {
+	return readXLSXRows(path, 1, -1)
+}
+
+func readXLSXRows(path string, start, end int) ([]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -242,164 +240,67 @@ func readXLSXLines(path string) ([]string, error) {
 		return nil, wrapError("failed to get XLSX file info", err)
 	}
 
-	zipReader, zipErr := zip.NewReader(file, fileInfo.Size())
-	if zipErr != nil {
-		return nil, wrapError(fmt.Sprintf("invalid XLSX file: %s is not a valid ZIP archive", path), zipErr)
+	if fileInfo.Size() > parser.MaxFileSize {
+		return nil, wrapError(fmt.Sprintf("file %s exceeds maximum allowed size of %d bytes", path, parser.MaxFileSize), nil)
+	}
+	if err := validateXLSXArchive(file, fileInfo.Size()); err != nil {
+		return nil, err
 	}
 
-	// Check total uncompressed size to prevent zip bombs
-	if err := security.CheckZipArchiveTotalSize(zipReader.File); err != nil {
-		return nil, wrapError("failed to read XLSX as ZIP archive", err)
+	xlsxFile, err := excelize.OpenReader(file)
+	if err != nil {
+		return nil, wrapError(fmt.Sprintf("invalid XLSX file: %s", path), err)
 	}
+	defer xlsxFile.Close()
 
-	// Read all ZIP entries.
-	files := make(map[string]string)
-	for _, zf := range zipReader.File {
-		data, err := security.ReadZipFile(zf)
-		if err != nil {
-			continue
-		}
-		files[zf.Name] = string(data)
-	}
-
-	// Parse shared strings.
-	var ss []string
-	if s, ok := files["xl/sharedStrings.xml"]; ok {
-		ss = parseXLSXSharedStrings(s)
-	}
-
-	// Find first worksheet XML.
-	var wsXML string
-	for name, data := range files {
-		if strings.HasPrefix(name, "xl/worksheets/sheet") && strings.HasSuffix(name, ".xml") {
-			wsXML = data
-			break
-		}
-	}
-
-	if wsXML == "" {
+	sheets := xlsxFile.GetSheetList()
+	if len(sheets) == 0 {
 		return nil, wrapError(fmt.Sprintf("invalid XLSX file: %s contains no worksheets", path), nil)
 	}
 
-	rows := parseXLSXWorksheet(wsXML, ss)
-	lines := make([]string, 0, len(rows))
-	for _, row := range rows {
-		lines = append(lines, strings.Join(row.cells, ", "))
+	rows, err := xlsxFile.Rows(sheets[0])
+	if err != nil {
+		return nil, wrapError("failed to read XLSX worksheet", err)
+	}
+	defer rows.Close()
+
+	var lines []string
+	rowNumber := 0
+	for rows.Next() {
+		rowNumber++
+		if rowNumber < start {
+			continue
+		}
+		if end != -1 && rowNumber > end {
+			break
+		}
+		columns, err := rows.Columns()
+		if err != nil {
+			return nil, wrapError("failed to read XLSX row", err)
+		}
+		lines = append(lines, strings.Join(columns, ", "))
+		if end != -1 && rowNumber == end {
+			break
+		}
+	}
+	if err := rows.Error(); err != nil {
+		return nil, wrapError("failed to read XLSX rows", err)
+	}
+	if rowNumber < start || (end != -1 && rowNumber < end) {
+		return nil, wrapError(fmt.Sprintf("requested row range exceeds XLSX row count (file has %d rows, requested %d-%d)", rowNumber, start, end), nil)
 	}
 	return lines, nil
 }
 
-// parseXLSXSharedStrings parses shared strings XML.
-func parseXLSXSharedStrings(xmlContent string) []string {
-	var result []string
-	decoder := security.NewXMLDecoder(strings.NewReader(xmlContent))
-	var inSi bool
-	var currentText strings.Builder
-
-	for {
-		token, err := decoder.Token()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			break
-		}
-
-		switch t := token.(type) {
-		case xml.StartElement:
-			if t.Name.Local == "si" && t.Name.Space == "http://schemas.openxmlformats.org/spreadsheetml/2006/main" {
-				inSi = true
-				currentText.Reset()
-			}
-		case xml.CharData:
-			if inSi {
-				currentText.Write(t)
-			}
-		case xml.EndElement:
-			if inSi && t.Name.Local == "si" && t.Name.Space == "http://schemas.openxmlformats.org/spreadsheetml/2006/main" {
-				inSi = false
-				result = append(result, strings.TrimSpace(currentText.String()))
-			}
-		}
+func validateXLSXArchive(file *os.File, size int64) error {
+	archive, err := zip.NewReader(file, size)
+	if err != nil {
+		return wrapError("invalid XLSX file: not a valid ZIP archive", err)
 	}
-
-	return result
-}
-
-// parseXLSXWorksheet parses worksheet XML into rows.
-func parseXLSXWorksheet(xmlContent string, sharedStrings []string) []worksheetRow {
-	var rows []worksheetRow
-	content := xmlContent
-
-	for {
-		rs := strings.Index(content, "<row ")
-		if rs == -1 {
-			break
-		}
-		re := strings.Index(content[rs:], "</row>")
-		if re == -1 {
-			break
-		}
-		re += rs + len("</row>")
-		rowXML := content[rs:re]
-		content = content[re:]
-
-		var cells []string
-		cellContent := rowXML
-		for {
-			cs := strings.Index(cellContent, "<c ")
-			if cs == -1 {
-				break
-			}
-			ce := strings.Index(cellContent[cs:], "</c>")
-			if ce == -1 {
-				break
-			}
-			ce += cs + len("</c>")
-			cellXML := cellContent[cs:ce]
-			cellContent = cellContent[ce:]
-
-			cellType := ""
-			if idx := strings.Index(cellXML, `t="`); idx != -1 {
-				val := cellXML[idx+3:]
-				if end := strings.Index(val, `"`); end != -1 {
-					cellType = val[:end]
-				}
-			}
-
-			vs := strings.Index(cellXML, "<v>")
-			ve := strings.Index(cellXML, "</v>")
-			if vs != -1 && ve != -1 {
-				val := cellXML[vs+len("<v>") : ve]
-				if cellType == "s" {
-					idx := 0
-					for _, c := range val {
-						if c >= '0' && c <= '9' {
-							idx = idx*10 + int(c-'0')
-						} else {
-							break
-						}
-					}
-					if idx >= 0 && idx < len(sharedStrings) {
-						cells = append(cells, sharedStrings[idx])
-					} else {
-						cells = append(cells, "")
-					}
-				} else {
-					cells = append(cells, val)
-				}
-			} else {
-				cells = append(cells, "")
-			}
-		}
-
-		if len(cells) == 0 {
-			cells = []string{""}
-		}
-		rows = append(rows, worksheetRow{cells: cells})
+	if err := security.CheckZipArchiveTotalSize(archive.File); err != nil {
+		return wrapError("failed to read XLSX as ZIP archive", err)
 	}
-
-	return rows
+	return nil
 }
 
 // wrapError wraps an error with additional context.

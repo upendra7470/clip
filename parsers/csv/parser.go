@@ -94,25 +94,25 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 		return parser.ParseResult{}, fmt.Errorf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize)
 	}
 
-	content, err := io.ReadAll(file)
-	if err != nil {
-		return parser.ParseResult{}, fmt.Errorf("error reading file %s: %w", req.File, err)
-	}
-
-	// Parse CSV content
-	csvReader := csv.NewReader(strings.NewReader(string(content)))
-	records, err := csvReader.ReadAll()
-	if err != nil {
-		return parser.ParseResult{}, wrapError("invalid CSV format", err)
-	}
-
-	// Extract readable text from CSV
+	csvReader := csv.NewReader(file)
 	var result strings.Builder
-	for i, record := range records {
-		if i > 0 {
+	written := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return parser.ParseResult{}, err
+		}
+		record, readErr := csvReader.Read()
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return parser.ParseResult{}, wrapError("invalid CSV format", readErr)
+		}
+		if written > 0 {
 			result.WriteString("\n")
 		}
 		result.WriteString(strings.Join(record, ", "))
+		written++
 	}
 
 	if result.Len() == 0 {
@@ -131,33 +131,39 @@ func (p *Parser) FileType() filetype.FileType {
 
 // ListUnits implements the parser.DocumentLister interface for CSV files.
 func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, []string, error) {
-	// Read the file content
-	content, err := os.ReadFile(req.File)
+	file, err := os.Open(req.File)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return 0, nil, fmt.Errorf("file %s does not exist: %w", req.File, err)
 		}
 		return 0, nil, fmt.Errorf("error reading file %s: %w", req.File, err)
 	}
-	if len(content) > parser.MaxFileSize {
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return 0, nil, fmt.Errorf("error reading file %s: %w", req.File, err)
+	}
+	if info.Size() > parser.MaxFileSize {
 		return 0, nil, fmt.Errorf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize)
 	}
 
-	// Parse CSV content
-	reader := csv.NewReader(strings.NewReader(string(content)))
-	records, err := reader.ReadAll()
-	if err != nil {
-		return 0, nil, wrapError("failed to parse CSV", err)
+	reader := csv.NewReader(file)
+	rowCount := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return 0, nil, err
+		}
+		_, readErr := reader.Read()
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return 0, nil, wrapError("failed to parse CSV", readErr)
+		}
+		rowCount++
 	}
 
-	// Return row count and row numbers as unit names
-	rowCount := len(records)
-	var rowNumbers []string
-	for i := 0; i < rowCount; i++ {
-		rowNumbers = append(rowNumbers, fmt.Sprintf("Row %d", i+1))
-	}
-
-	return rowCount, rowNumbers, nil
+	return rowCount, nil, nil
 }
 
 // GetRangeUnit returns the unit type that this parser uses for ranges.
@@ -179,43 +185,59 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid row range: start row must not be greater than end row (got %d-%d)", start, end), nil)
 	}
 
-	// Read the file content
-	content, err := os.ReadFile(req.File)
+	file, err := os.Open(req.File)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return parser.ParseResult{}, fmt.Errorf("file %s does not exist: %w", req.File, err)
 		}
 		return parser.ParseResult{}, fmt.Errorf("error reading file %s: %w", req.File, err)
 	}
-	if len(content) > parser.MaxFileSize {
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return parser.ParseResult{}, fmt.Errorf("error reading file %s: %w", req.File, err)
+	}
+	if info.Size() > parser.MaxFileSize {
 		return parser.ParseResult{}, fmt.Errorf("file %s exceeds maximum allowed size of %d bytes", req.File, parser.MaxFileSize)
 	}
 
-	// Parse CSV content
-	csvReader := csv.NewReader(strings.NewReader(string(content)))
+	// Stream rows and stop once the requested end is reached. This keeps a
+	// small range fast even when the CSV contains millions of rows.
+	csvReader := csv.NewReader(file)
 	csvReader.LazyQuotes = true
-	records, err := csvReader.ReadAll()
-	if err != nil {
-		return parser.ParseResult{}, wrapError("invalid CSV format", err)
-	}
-
-	// Normalize end value if it's -1
-	if end == -1 {
-		end = len(records)
-	}
-
-	// Validate range against actual row count
-	if start > len(records) || end > len(records) {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested row range exceeds CSV row count (file has %d rows, requested %d-%d)", len(records), start, end), nil)
-	}
-
-	// Extract only the requested row range
 	var result strings.Builder
-	for i := start - 1; i < end && i < len(records); i++ {
-		if i > start-1 {
+	rowNumber := 0
+	written := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return parser.ParseResult{}, err
+		}
+		record, readErr := csvReader.Read()
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return parser.ParseResult{}, wrapError("invalid CSV format", readErr)
+		}
+		rowNumber++
+		if rowNumber < start {
+			continue
+		}
+		if end != -1 && rowNumber > end {
+			break
+		}
+		if written > 0 {
 			result.WriteString("\n")
 		}
-		result.WriteString(strings.Join(records[i], ", "))
+		result.WriteString(strings.Join(record, ", "))
+		written++
+		if end != -1 && rowNumber == end {
+			break
+		}
+	}
+
+	if rowNumber < start || (end != -1 && rowNumber < end) {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested row range exceeds CSV row count (file has %d rows, requested %d-%d)", rowNumber, start, end), nil)
 	}
 
 	if result.Len() == 0 {
