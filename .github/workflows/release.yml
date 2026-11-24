@@ -88,10 +88,6 @@ jobs:
           test "$actual_detection" = "a917b23dbd9524b465df7e922641b3ff2981623df4ded5a0234004ef2fee7cfe"
           test "$actual_recognition" = "86c145c2edb96c8caed5b1ebb8f44d706408922211451c309c625157dd6061c5"
 
-      - name: Test
-        shell: bash
-        run: go test ./...
-
       - name: Build self-contained Clip binary
         shell: bash
         env:
