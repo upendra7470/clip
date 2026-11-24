@@ -18,22 +18,27 @@ jobs:
           - runner: ubuntu-latest
             goos: linux
             goarch: amd64
+            rust_target: x86_64-unknown-linux-gnu
             extension: ""
           - runner: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
+            rust_target: aarch64-unknown-linux-gnu
             extension: ""
           - runner: macos-15-intel
             goos: darwin
             goarch: amd64
+            rust_target: x86_64-apple-darwin
             extension: ""
-          - runner: macos-14
+          - runner: macos-15-intel
             goos: darwin
             goarch: arm64
+            rust_target: aarch64-apple-darwin
             extension: ""
           - runner: windows-latest
             goos: windows
             goarch: amd64
+            rust_target: x86_64-pc-windows-msvc
             extension: .exe
     runs-on: ${{ matrix.runner }}
 
@@ -56,21 +61,24 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - name: Build native OCR engine
         shell: bash
-        run: cargo build --locked --release -p ocrs-cli --features onnx --manifest-path .release/ocrs/Cargo.toml
+        run: cargo build --locked --release -p ocrs-cli --features onnx --target ${{ matrix.rust_target }} --manifest-path .release/ocrs/Cargo.toml
 
       - name: Bundle OCR engine and verified models
         shell: bash
         env:
           ENGINE_EXTENSION: ${{ matrix.extension }}
+          RUST_TARGET: ${{ matrix.rust_target }}
         run: |
           set -euo pipefail
           assets=internal/ocrbundle/assets
           mkdir -p "$assets"
           rm -f "$assets/placeholder.txt"
-          cp ".release/ocrs/target/release/ocrs${ENGINE_EXTENSION}" "$assets/clip-ocr${ENGINE_EXTENSION}"
+          cp ".release/ocrs/target/${RUST_TARGET}/release/ocrs${ENGINE_EXTENSION}" "$assets/clip-ocr${ENGINE_EXTENSION}"
           cp .release/ocrs/LICENSE-MIT.txt "$assets/OCRS-LICENSE-MIT.txt"
           cp .release/ocrs/LICENSE-APACHE.txt "$assets/OCRS-LICENSE-APACHE.txt"
           curl --fail --location --retry 3 --output "$assets/text-detection.onnx" https://ocrs-models.s3-accelerate.amazonaws.com/text-detection.onnx
