@@ -48,8 +48,6 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	versionFlag := flagSet.Bool("version", false, "Show version information")
 	listFlag := flagSet.Bool("list", false, "List document units (pages, sections, slides, etc.)")
 	inspectFlag := flagSet.Bool("inspect", false, "Inspect document units (pages, sections, slides, etc.)")
-	ocrLanguage := flagSet.String("ocr-lang", "eng", "Tesseract OCR language code")
-	ocrPageSegMode := flagSet.Int("ocr-psm", 3, "Tesseract page segmentation mode (0-13)")
 	ocrStatus := flagSet.Bool("ocr-status", false, "Show OCR engine availability")
 	err := flagSet.Parse(args)
 	if err != nil {
@@ -71,19 +69,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	if *ocrStatus {
 		if path, ok := ocr.Available(); ok {
-			fmt.Fprintf(stdout, "Image OCR ready: %s\n", path)
-			if renderer, available := ocr.PDFRendererAvailable(); available {
-				fmt.Fprintf(stdout, "Scanned PDF OCR ready: %s\n", renderer)
-			} else {
-				fmt.Fprintln(stdout, "Scanned PDF OCR unavailable: install Poppler (pdftoppm)")
-			}
+			fmt.Fprintf(stdout, "Built-in OCR ready: %s\n", path)
+			fmt.Fprintln(stdout, "Scanned PDF OCR ready: built in")
 			return 0
 		}
-		fmt.Fprintln(stderr, "OCR unavailable: install Tesseract and ensure it is on PATH")
-		return 1
-	}
-	if *ocrPageSegMode < 0 || *ocrPageSegMode > 13 {
-		fmt.Fprintln(stderr, "Error: --ocr-psm must be between 0 and 13")
+		fmt.Fprintln(stderr, "OCR unavailable: this development build does not contain the bundled OCR assets")
 		return 1
 	}
 
@@ -105,7 +95,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// Register PDF parser
-	pdfParser := pdf.NewParser(*ocrLanguage, *ocrPageSegMode)
+	pdfParser := pdf.NewParser()
 	if err := reg.Register(pdfParser.FileType(), pdfParser); err != nil {
 		fmt.Fprintf(stderr, "Failed to register PDF parser: %v\n", err)
 		return 1
@@ -195,7 +185,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	ocrParser := ocr.NewParser(*ocrLanguage, *ocrPageSegMode)
+	ocrParser := ocr.NewParser()
 	if err := reg.Register(ocrParser.FileType(), ocrParser); err != nil {
 		fmt.Fprintf(stderr, "Failed to register OCR parser: %v\n", err)
 		return 1
@@ -422,9 +412,7 @@ func showHelp() {
 	fmt.Println("  clip --help")
 	fmt.Println("  clip --ocr-status")
 	fmt.Println()
-	fmt.Println("OCR options (place before the filename):")
-	fmt.Println("  --ocr-lang <code>   Tesseract language, default: eng")
-	fmt.Println("  --ocr-psm <0-13>    Page segmentation mode, default: 3")
+	fmt.Println("OCR is built in and works offline; no external tools are required.")
 }
 
 // getFilePathAndRangeFromArgs extracts the file path and optional range argument from parsed flag arguments.

@@ -1,0 +1,2 @@
+Official release builds replace this placeholder with the native OCR engine,
+its model files, and third-party license notices.

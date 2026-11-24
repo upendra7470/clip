@@ -1,10 +1,17 @@
 package clipboard
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
+	"time"
+
+	nativeclipboard "golang.design/x/clipboard"
 )
+
+var nativeInit sync.Once
+var nativeInitErr error
 
 // Copy copies the given text to the system clipboard.
 // It returns an error if the clipboard is unavailable or the operation fails.
@@ -81,4 +88,19 @@ func copyImpl(text string) error {
 
 	// Platform-specific implementation will be provided by build tag files
 	return copyPlatform(text)
+}
+
+// copyNative uses native, pure-Go clipboard integrations on Windows, macOS,
+// X11, and Wayland. It does not shell out to an operating-system utility.
+func copyNative(text string) error {
+	nativeInit.Do(func() { nativeInitErr = nativeclipboard.Init() })
+	if nativeInitErr != nil {
+		return wrapError("system clipboard unavailable", nativeInitErr)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := nativeclipboard.Write(ctx, nativeclipboard.FmtText, []byte(text)); err != nil {
+		return wrapError("failed to copy text", err)
+	}
+	return nil
 }

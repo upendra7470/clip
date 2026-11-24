@@ -17,13 +17,13 @@ type fakeRunner struct {
 	err  error
 }
 
-func (f fakeRunner) Recognize(context.Context, string, string, int) (string, error) {
+func (f fakeRunner) Recognize(context.Context, string) (string, error) {
 	return f.text, f.err
 }
 
 func TestOCRCopiesRecognizedText(t *testing.T) {
 	path := testImage(t, 20, 10)
-	p := NewParserWithRunner("eng", 6, fakeRunner{text: "  Hello from OCR\n"})
+	p := NewParserWithRunner(fakeRunner{text: "  Hello from OCR\n"})
 
 	result, err := p.ParseWithContext(context.Background(), parser.ParseRequest{File: path})
 	if err != nil {
@@ -40,7 +40,7 @@ func TestOCRRejectsInvalidImage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := NewParserWithRunner("eng", 3, fakeRunner{text: "ignored"}).
+	_, err := NewParserWithRunner(fakeRunner{text: "ignored"}).
 		ParseWithContext(context.Background(), parser.ParseRequest{File: path})
 	if err == nil {
 		t.Fatal("expected invalid image error")

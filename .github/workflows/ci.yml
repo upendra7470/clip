@@ -40,9 +40,9 @@ jobs:
       - name: Build
         run: go build ./...
 
-      - name: Install Linux clipboard dependencies
+      - name: Install virtual display for clipboard test
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xclip xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
 
       - name: Run tests (Linux, with virtual display for clipboard)
         if: runner.os == 'Linux'
