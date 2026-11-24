@@ -5,27 +5,24 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/ledongthuc/pdf"
+	"github.com/pdfcpu/pdfcpu/pkg/api"
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/upendra7470/clip/internal/filetype"
 	"github.com/upendra7470/clip/internal/parser"
 	"github.com/upendra7470/clip/parsers/ocr"
 )
 
 // Parser implements the parser.Parser, parser.RangeParser, and parser.DocumentLister interfaces for PDF files.
-type Parser struct {
-	OCRLanguage    string
-	OCRPageSegMode int
-}
+type Parser struct{}
 
 // NewParser creates a new PDF Parser instance.
-func NewParser(language string, pageSegMode int) *Parser {
-	return &Parser{OCRLanguage: language, OCRPageSegMode: pageSegMode}
+func NewParser() *Parser {
+	return &Parser{}
 }
 
 // Parse reads a PDF file and extracts text content.
@@ -196,43 +193,43 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 }
 
 func (p *Parser) ocrPages(ctx context.Context, path string, start, end int) (parser.ParseResult, error) {
-	renderer, err := exec.LookPath("pdftoppm")
-	if err != nil {
-		return parser.ParseResult{}, wrapError("PDF contains no embedded text; scanned PDF OCR requires Poppler (pdftoppm)", err)
-	}
 	tempDir, err := os.MkdirTemp("", "clip-pdf-ocr-*")
 	if err != nil {
 		return parser.ParseResult{}, wrapError("failed to prepare PDF OCR", err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	outputBase := filepath.Join(tempDir, "page")
-	args := []string{"-f", fmt.Sprint(start)}
+	selectedPages := []string{fmt.Sprint(start)}
 	if end != -1 {
-		args = append(args, "-l", fmt.Sprint(end))
+		selectedPages[0] = fmt.Sprintf("%d-%d", start, end)
+	} else {
+		selectedPages[0] = fmt.Sprintf("%d-", start)
 	}
-	args = append(args, "-png", "-r", "300", path, outputBase)
-	cmd := exec.CommandContext(ctx, renderer, args...)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return parser.ParseResult{}, wrapError(fmt.Sprintf("failed to render PDF for OCR: %s", strings.TrimSpace(string(output))), err)
+	conf := model.NewDefaultConfiguration()
+	if err := api.ExtractImagesFile(ctx, path, tempDir, selectedPages, conf); err != nil {
+		return parser.ParseResult{}, wrapError("failed to extract scanned PDF images for OCR", err)
 	}
 
-	images, err := filepath.Glob(outputBase + "-*.png")
+	entries, err := os.ReadDir(tempDir)
 	if err != nil {
-		return parser.ParseResult{}, wrapError("failed to find rendered PDF pages", err)
+		return parser.ParseResult{}, wrapError("failed to find extracted PDF images", err)
 	}
-	sort.Slice(images, func(i, j int) bool {
-		return renderedPageNumber(images[i]) < renderedPageNumber(images[j])
-	})
+	images := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			images = append(images, filepath.Join(tempDir, entry.Name()))
+		}
+	}
+	sort.Strings(images)
 	if len(images) == 0 {
-		return parser.ParseResult{}, wrapError("PDF renderer produced no pages for OCR", nil)
+		return parser.ParseResult{}, wrapError("PDF contains no embedded text or extractable scanned images", nil)
 	}
 
 	var result strings.Builder
-	for _, imagePath := range images {
-		text, err := ocr.Recognize(ctx, imagePath, p.OCRLanguage, p.OCRPageSegMode)
+	for index, imagePath := range images {
+		text, err := ocr.Recognize(ctx, imagePath)
 		if err != nil {
-			return parser.ParseResult{}, wrapError(fmt.Sprintf("failed to OCR PDF page %d", renderedPageNumber(imagePath)), err)
+			return parser.ParseResult{}, wrapError(fmt.Sprintf("failed to OCR extracted PDF image %d", index+1), err)
 		}
 		text = strings.TrimSpace(text)
 		if text == "" {
@@ -247,16 +244,6 @@ func (p *Parser) ocrPages(ctx context.Context, path string, start, end int) (par
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("OCR found no readable text in PDF pages %d-%d", start, end), nil)
 	}
 	return parser.ParseResult{Text: result.String()}, nil
-}
-
-func renderedPageNumber(path string) int {
-	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	index := strings.LastIndexByte(base, '-')
-	if index == -1 {
-		return 0
-	}
-	number, _ := strconv.Atoi(base[index+1:])
-	return number
 }
 
 // FileType returns the file type this parser handles.

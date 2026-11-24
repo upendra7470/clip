@@ -2,229 +2,122 @@
 
 # Clip
 
-**Copy text from documents and images to your clipboard with one command.**
+### Any document. One command. Straight to your clipboard.
 
 [![CI](https://github.com/upendra7470/clip/actions/workflows/ci.yml/badge.svg)](https://github.com/upendra7470/clip/actions/workflows/ci.yml)
-[![Security Scan](https://github.com/upendra7470/clip/actions/workflows/security.yml/badge.svg)](https://github.com/upendra7470/clip/actions/workflows/security.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/upendra7470/clip.svg)](https://pkg.go.dev/github.com/upendra7470/clip)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Security](https://github.com/upendra7470/clip/actions/workflows/security.yml/badge.svg)](https://github.com/upendra7470/clip/actions/workflows/security.yml)
+[![Release](https://img.shields.io/github/v/release/upendra7470/clip?display_name=tag)](https://github.com/upendra7470/clip/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed.svg)](LICENSE)
 
-*Windows · macOS · Linux — no configuration required*
+**Windows · macOS · Linux** &nbsp;|&nbsp; **Offline OCR included** &nbsp;|&nbsp; **No runtime dependencies**
 
 </div>
 
 ---
 
-## Why Clip?
+Clip is a fast, private command-line tool that extracts text from documents and images, then puts it on your clipboard. It understands the file automatically, can select only the pages or rows you need, and performs OCR locally—nothing is uploaded.
 
-Extracting text from documents usually means opening heavyweight apps, selecting, copying, and cleaning up formatting along the way. **Clip** does it in a single step: it detects the file type, extracts the text (or just the range you want), and places it straight on your clipboard — ready to paste anywhere.
-
-```bash
-clip report.pdf          # whole document
-clip report.pdf 5-10     # only pages 5-10
-clip receipt.png         # OCR an image
-```
-
-## Features
-
-- **Document extraction and image OCR** behind the same `clip` command
-- **Scanned PDF fallback** — automatically runs OCR when a PDF has no embedded text
-- **Range extraction** with units that make sense per format (pages, slides, rows, sections, values)
-- **Open-ended ranges** — `2-` for "from 2 to the end", `-5` for "the first 5"
-- **Smart filename resolution** — searches your current directory, Downloads, Desktop, and Documents when given a bare filename
-- **Safety hardened** against malicious documents: bounded reads, zip-bomb protection, XML token limits, RTF nesting caps
-- **Cross-platform** — first-class support for Windows, macOS, and Linux
-- **Fast range extraction** — streams TXT, CSV, XLSX, and selected PPTX content
-- **Zero configuration for documents** — one binary, no config files
-
-## Supported Formats
-
-| Format | Extension(s) | Range Unit |
-|--------|--------------|------------|
-| PDF | `.pdf` | pages |
-| Word | `.docx` | sections |
-| PowerPoint | `.ppt`, `.pptx` | slides |
-| OpenDocument Text | `.odt` | paragraphs |
-| Rich Text | `.rtf` | paragraphs |
-| Plain text | `.txt` | lines |
-| Markdown | `.md` | blocks |
-| CSV | `.csv` | rows |
-| Excel | `.xlsx` | rows |
-| OpenDocument Sheets | `.ods` | rows |
-| JSON | `.json` | entries |
-| XML / HTML | `.xml`, `.html` | entries / blocks |
-| YAML | `.yaml`, `.yml` | values |
-| Images with OCR | `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tif`, `.tiff`, `.webp` | full image |
-
-## Requirements
-
-- **Document extraction:** no additional runtime dependency.
-- **Image OCR:** [Tesseract OCR](https://tesseract-ocr.github.io/) must be installed and available on `PATH`.
-- **Scanned PDF OCR:** Poppler's `pdftoppm` renderer is also required.
-- **Linux users:** a clipboard backend is required — `xclip` (X11) or `wl-copy` (Wayland). Install with `sudo apt install xclip`, `sudo dnf install xclip`, or your distribution's equivalent.
-- **Go 1.26+** only if building from source.
-
-### Enable OCR
-
-```bash
-# Ubuntu / Debian
-sudo apt install tesseract-ocr
-sudo apt install poppler-utils
-
-# macOS
-brew install tesseract
-brew install poppler
-
-# Windows
-winget install UB-Mannheim.TesseractOCR
-winget install oschwartz10612.Poppler
-
-clip --ocr-status
-clip receipt.png
-```
-
-Clip automatically recognizes supported image files. Use `--ocr-lang` for installed Tesseract languages and `--ocr-psm` for page layout tuning:
-
-```bash
-clip --ocr-lang eng receipt.png
-clip --ocr-lang hin --ocr-psm 6 handwritten-note.png
-```
-
-## Installation
-
-### Option 1 — Download a prebuilt binary (all platforms)
-
-Grab the archive for your platform from the [**Releases**](https://github.com/upendra7470/clip/releases) page, then:
-
-**macOS / Linux**
-
-```bash
-tar -xzf clip_*.tar.gz                  # extract
-mkdir -p ~/.local/bin                   # ensure the dir exists
-mv clip_* ~/.local/bin/clip             # move onto your PATH
-chmod +x ~/.local/bin/clip
-```
-
-> On Apple Silicon download the `darwin_arm64` build; Intel Macs use `darwin_amd64`.
-
-**Windows**
-
-```powershell
-Expand-Archive clip_*_windows_amd64.zip # extract
-New-Item -ItemType Directory -Force "$HOME\.local\bin" | Out-Null
-Move-Item clip_*_windows_amd64.exe "$HOME\.local\bin\clip.exe"
-```
-
-Then add `%USERPROFILE%\.local\bin` to your PATH (*Settings → System → About → Advanced system settings → Environment Variables*, or):
-
-```powershell
-[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$HOME\.local\bin", "User")
-```
-
-### Option 2 — Install with Go (all platforms)
-
-If you have Go installed, this works identically on Windows, macOS, and Linux:
-
-```bash
-go install github.com/upendra7470/clip/cmd/clip@latest
-```
-
-The binary lands in your Go bin directory (`$(go env GOPATH)/bin`). Make sure it's on your PATH.
-
-### Option 3 — Build from source (all platforms)
-
-```bash
-git clone https://github.com/upendra7470/clip.git
-cd clip
-go build -o clip ./cmd/clip        # on Windows use: go build -o clip.exe ./cmd/clip
-```
-
-On macOS/Linux you can also use the Makefile:
-
-```bash
-make build       # build into ./
-make install     # install to ~/.local/bin
-```
-
-### Verify the installation
-
-```bash
-clip --version
-# clip v1.0
-```
-
-<details>
-<summary><b>PATH not set? (click to expand)</b></summary>
-
-**macOS / Linux (bash/zsh)**
-
-```bash
-echo 'export PATH="$HOME/.local/bin:$HOME/go/bin:$PATH"' >> ~/.zshrc   # or ~/.bashrc
-source ~/.zshrc
-```
-
-**Windows (PowerShell)**
-
-```powershell
-[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$HOME\go\bin", "User")
-```
-</details>
-
-## Usage
-
-```
-clip <filename> [range]
-```
-
-| Command | What it does |
-|---------|-------------|
-| `clip document.pdf` | Extract everything → clipboard |
-| `clip report.pdf 5-10` | Pages 5–10 → clipboard |
-| `clip "Q4 Review.pptx" 2-5` | Slides 2–5 (quotes handle spaces) |
-| `clip data.csv -3` | First 3 rows |
-| `clip notes.txt 10-` | From line 10 to the end |
-| `clip receipt.png` | OCR the image → clipboard |
-| `clip --ocr-lang deu scan.tiff` | OCR using German language data |
-| `clip --ocr-status` | Verify the OCR engine is ready |
-| `clip --list file.xlsx` | Show the document's range units |
-| `clip --inspect file.docx` | Inspect document structure |
-| `clip --help` / `--version` | Help / version info |
-
-Clip prints what it did and confirms the copy:
-
-```
-$ clip notes.txt 1-2
-✓ Found: notes.txt
-✓ Extracted text successfully
+```console
+$ clip report.pdf 5-10
+✓ Found: report.pdf
+✓ Extracted pages 5-10 successfully
 ✓ Copied to clipboard
 ```
 
-### Uninstall
+## Install once
 
-```bash
-rm ~/.local/bin/clip        # macOS / Linux
-Remove-Item "$HOME\.local\bin\clip.exe"   # Windows (PowerShell)
+The official release is a single self-contained executable. It includes the OCR engine, recognition models, scanned-PDF support, and native clipboard integration.
+
+**macOS / Linux**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/upendra7470/clip/main/install.sh | sh
 ```
 
-## Documentation
+**Windows PowerShell**
 
-- [Installation guide](INSTALLATION.md) — detailed setup, PATH troubleshooting, smart resolution behavior
-- [Contributing guide](CONTRIBUTING.md) — how to add a new format parser
-- [Security policy](SECURITY.md) — how to report vulnerabilities
-- [Changelog](CHANGELOG.md)
+```powershell
+irm https://raw.githubusercontent.com/upendra7470/clip/main/install.ps1 | iex
+```
 
-## Development
+That is the entire setup—no Tesseract, Poppler, Python, Java, Go, Homebrew, or Linux clipboard package is required. You can also download the single binary directly from [GitHub Releases](https://github.com/upendra7470/clip/releases/latest).
 
-```bash
+> macOS may ask you to confirm a downloaded command-line app the first time it runs. Clip supports Apple Silicon and Intel Macs; Linux supports x64 and ARM64; Windows supports x64.
+
+## Use it
+
+```sh
+clip <file> [range]
+```
+
+```sh
+clip contract.pdf              # every page
+clip contract.pdf 4-9          # pages 4 through 9
+clip "Q4 Review.pptx" 2-       # slide 2 to the end
+clip customers.xlsx -20        # first 20 rows
+clip receipt.png               # built-in offline OCR
+clip scanned-document.pdf      # OCR fallback happens automatically
+clip notes.txt 30-50           # only these lines
+clip --list workbook.xlsx      # inspect available units
+clip --ocr-status              # verify the bundled OCR engine
+```
+
+When only a filename is supplied, Clip can find it in the current directory, Downloads, Desktop, or Documents.
+
+## Why Clip
+
+- **One memorable command** for documents, spreadsheets, presentations, and images
+- **Private by design**—all extraction and OCR happens on your computer
+- **Truly portable**—a native binary for Windows, macOS, and Linux
+- **Built-in OCR**—the engine and verified models ship inside the executable
+- **Scanned PDF intelligence**—embedded text first, OCR automatically when needed
+- **Precise ranges**—copy only the pages, slides, rows, lines, or sections you want
+- **Fast on large files**—streaming and targeted extraction avoid unnecessary work
+- **Defensive parsing**—bounded reads, archive limits, image limits, and OCR timeouts
+
+## Supported formats
+
+| Content | Extensions | Range unit |
+|---|---|---|
+| PDF | `.pdf` | pages |
+| Word | `.docx` | sections |
+| PowerPoint | `.ppt`, `.pptx` | slides |
+| Excel / OpenDocument Sheets | `.xlsx`, `.ods` | rows |
+| Text / Markdown | `.txt`, `.md` | lines / blocks |
+| CSV | `.csv` | rows |
+| OpenDocument Text / Rich Text | `.odt`, `.rtf` | paragraphs |
+| JSON / XML / HTML / YAML | `.json`, `.xml`, `.html`, `.yaml`, `.yml` | entries / blocks / values |
+| Images | `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tif`, `.tiff`, `.webp` | offline OCR |
+
+The current OCR model recognizes printed Latin-alphabet text. OCR quality depends on image resolution, contrast, orientation, and layout.
+
+## How the self-contained build works
+
+Official releases compile a native [ocrs](https://github.com/robertknight/ocrs) engine for each platform and embed it with pinned, checksum-verified models inside Clip. On first OCR use, those assets are unpacked into the user's private cache directory. PDF image extraction and clipboard communication are implemented in Go, so no helper application is needed.
+
+| Platform | Release binary |
+|---|---|
+| Linux x64 | `clip_linux_amd64` |
+| Linux ARM64 | `clip_linux_arm64` |
+| macOS Intel | `clip_darwin_amd64` |
+| macOS Apple Silicon | `clip_darwin_arm64` |
+| Windows x64 | `clip_windows_amd64.exe` |
+
+Checksums are published beside every release.
+
+## Build and contribute
+
+Building from source needs Go 1.26 or newer. Source builds intentionally use a placeholder OCR bundle; the release workflow builds and embeds the native engine and models.
+
+```sh
 git clone https://github.com/upendra7470/clip.git
 cd clip
-make test    # run the full test suite
-make vet     # static analysis
-make fmt     # formatting
+go test ./...
+go build -o clip ./cmd/clip
 ```
 
-CI builds and tests every change on Ubuntu, macOS, and Windows; releases are automatically built for all major platforms when a `v*` tag is pushed.
+See [CONTRIBUTING.md](CONTRIBUTING.md), the detailed [installation guide](INSTALLATION.md), [security policy](SECURITY.md), and [changelog](CHANGELOG.md).
 
 ## License
 
-Distributed under the MIT License. See [`LICENSE`](LICENSE) for details.
+Clip is available under the [MIT License](LICENSE). Bundled OCR components retain their upstream MIT/Apache-2.0 notices.

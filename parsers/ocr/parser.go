@@ -1,16 +1,17 @@
 package ocr
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
+	"image/png"
 	_ "image/png"
 	"io"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 
 	_ "golang.org/x/image/bmp"
@@ -18,94 +19,82 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"github.com/upendra7470/clip/internal/filetype"
+	"github.com/upendra7470/clip/internal/ocrbundle"
 	"github.com/upendra7470/clip/internal/parser"
 	"github.com/upendra7470/clip/internal/security"
 )
 
 type Runner interface {
-	Recognize(ctx context.Context, file, language string, pageSegMode int) (string, error)
+	Recognize(ctx context.Context, file string) (string, error)
 }
 
-type tesseractRunner struct{}
+type bundledRunner struct{}
 
-func (tesseractRunner) Recognize(ctx context.Context, file, language string, pageSegMode int) (string, error) {
-	path, err := exec.LookPath("tesseract")
+func (bundledRunner) Recognize(ctx context.Context, file string) (string, error) {
+	paths, err := ocrbundle.Resolve()
 	if err != nil {
-		return "", fmt.Errorf("OCR engine unavailable: install Tesseract, then run clip again")
+		return "", err
 	}
 
-	cmd := exec.CommandContext(ctx, path, file, "stdout", "-l", language, "--psm", strconv.Itoa(pageSegMode))
-	output, err := cmd.CombinedOutput()
+	cmd := exec.CommandContext(ctx, paths.Engine,
+		"--detect-model", paths.DetectionModel,
+		"--rec-model", paths.RecognitionModel,
+		file,
+	)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
 	if err != nil {
-		detail := strings.TrimSpace(string(output))
+		detail := strings.TrimSpace(stderr.String())
 		if detail == "" {
 			detail = err.Error()
 		}
-		return "", fmt.Errorf("Tesseract OCR failed: %s", detail)
+		return "", fmt.Errorf("built-in OCR failed: %s", detail)
 	}
 	return string(output), nil
 }
 
 type Parser struct {
-	Language    string
-	PageSegMode int
-	runner      Runner
+	runner Runner
 }
 
-func NewParser(language string, pageSegMode int) *Parser {
-	if language == "" {
-		language = "eng"
-	}
-	if pageSegMode < 0 || pageSegMode > 13 {
-		pageSegMode = 3
-	}
-	return &Parser{
-		Language:    language,
-		PageSegMode: pageSegMode,
-		runner:      tesseractRunner{},
-	}
+func NewParser() *Parser {
+	return &Parser{runner: bundledRunner{}}
 }
 
-func NewParserWithRunner(language string, pageSegMode int, runner Runner) *Parser {
-	p := NewParser(language, pageSegMode)
+func NewParserWithRunner(runner Runner) *Parser {
+	p := NewParser()
 	p.runner = runner
 	return p
 }
 
 func Available() (string, bool) {
-	path, err := exec.LookPath("tesseract")
-	return path, err == nil
+	paths, err := ocrbundle.Resolve()
+	return paths.Engine, err == nil
 }
 
-func PDFRendererAvailable() (string, bool) {
-	path, err := exec.LookPath("pdftoppm")
-	return path, err == nil
-}
-
-func Recognize(ctx context.Context, file, language string, pageSegMode int) (string, error) {
-	if err := validateImage(file); err != nil {
+func Recognize(ctx context.Context, file string) (string, error) {
+	prepared, cleanup, err := prepareImage(file)
+	if err != nil {
 		return "", err
 	}
-	if language == "" {
-		language = "eng"
-	}
-	if pageSegMode < 0 || pageSegMode > 13 {
-		pageSegMode = 3
-	}
+	defer cleanup()
 	ocrCtx, cancel := context.WithTimeout(ctx, security.MaxOCRDuration)
 	defer cancel()
-	return tesseractRunner{}.Recognize(ocrCtx, file, language, pageSegMode)
+	return bundledRunner{}.Recognize(ocrCtx, prepared)
 }
 
 func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
-	if err := validateImage(req.File); err != nil {
+	prepared, cleanup, err := prepareImage(req.File)
+	if err != nil {
 		return parser.ParseResult{}, err
 	}
+	defer cleanup()
 
 	ocrCtx, cancel := context.WithTimeout(ctx, security.MaxOCRDuration)
 	defer cancel()
 
-	text, err := p.runner.Recognize(ocrCtx, req.File, p.Language, p.PageSegMode)
+	text, err := p.runner.Recognize(ocrCtx, prepared)
 	if err != nil {
 		return parser.ParseResult{}, err
 	}
@@ -116,30 +105,66 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 	return parser.ParseResult{Text: text}, nil
 }
 
-func validateImage(path string) error {
+func validateImage(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("cannot open image: %w", err)
+		return "", fmt.Errorf("cannot open image: %w", err)
 	}
 	defer file.Close()
 
 	config, format, err := image.DecodeConfig(file)
 	if err != nil {
-		return fmt.Errorf("invalid or unsupported image: %w", err)
+		return "", fmt.Errorf("invalid or unsupported image: %w", err)
 	}
 	if config.Width <= 0 || config.Height <= 0 {
-		return fmt.Errorf("invalid image dimensions")
+		return "", fmt.Errorf("invalid image dimensions")
 	}
 	if config.Width > security.MaxImageDimension || config.Height > security.MaxImageDimension {
-		return fmt.Errorf("image dimensions %dx%d exceed the %d-pixel limit", config.Width, config.Height, security.MaxImageDimension)
+		return "", fmt.Errorf("image dimensions %dx%d exceed the %d-pixel limit", config.Width, config.Height, security.MaxImageDimension)
 	}
 	if uint64(config.Width)*uint64(config.Height) > security.MaxImagePixels {
-		return fmt.Errorf("image contains too many pixels for safe OCR")
+		return "", fmt.Errorf("image contains too many pixels for safe OCR")
 	}
 	if format == "" {
-		return fmt.Errorf("unsupported image format")
+		return "", fmt.Errorf("unsupported image format")
 	}
-	return nil
+	return format, nil
+}
+
+func prepareImage(path string) (string, func(), error) {
+	format, err := validateImage(path)
+	if err != nil {
+		return "", func() {}, err
+	}
+	if format == "png" || format == "jpeg" || format == "webp" {
+		return path, func() {}, nil
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return "", func() {}, fmt.Errorf("open image for conversion: %w", err)
+	}
+	imageData, _, err := image.Decode(file)
+	file.Close()
+	if err != nil {
+		return "", func() {}, fmt.Errorf("decode image for OCR: %w", err)
+	}
+	temp, err := os.CreateTemp("", "clip-ocr-*.png")
+	if err != nil {
+		return "", func() {}, fmt.Errorf("prepare image for OCR: %w", err)
+	}
+	tempPath := temp.Name()
+	cleanup := func() { os.Remove(tempPath) }
+	if err := png.Encode(temp, imageData); err != nil {
+		temp.Close()
+		cleanup()
+		return "", func() {}, fmt.Errorf("convert image for OCR: %w", err)
+	}
+	if err := temp.Close(); err != nil {
+		cleanup()
+		return "", func() {}, fmt.Errorf("finish image conversion: %w", err)
+	}
+	return tempPath, cleanup, nil
 }
 
 func (p *Parser) FileType() filetype.FileType {

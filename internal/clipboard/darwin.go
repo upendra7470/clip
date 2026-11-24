@@ -2,43 +2,12 @@
 
 package clipboard
 
-import (
-	"context"
-	"os/exec"
-	"time"
-)
-
 // copyPlatform is the platform-specific implementation for darwin.
 func copyPlatform(text string) error {
 	return copyDarwin(text)
 }
 
-// copyDarwin copies text to the clipboard on macOS using pbcopy.
+// copyDarwin copies text through the native macOS pasteboard API.
 func copyDarwin(text string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "pbcopy")
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return wrapError("macOS clipboard unavailable", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return wrapError("failed to start pbcopy", err)
-	}
-
-	if _, err := stdin.Write([]byte(text)); err != nil {
-		stdin.Close()
-		return wrapError("failed to write to pbcopy", err)
-	}
-
-	if err := stdin.Close(); err != nil {
-		return wrapError("failed to close pbcopy stdin", err)
-	}
-
-	if err := cmd.Wait(); err != nil {
-		return wrapError("pbcopy failed", err)
-	}
-
-	return nil
+	return copyNative(text)
 }

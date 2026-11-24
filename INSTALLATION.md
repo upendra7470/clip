@@ -1,251 +1,81 @@
-# Clip Installation Guide
+# Installing Clip
 
-## Quick Installation
+Official Clip releases are self-contained. You do not need to install an OCR engine, PDF renderer, language runtime, package manager, or clipboard utility.
 
-### Download a prebuilt binary (all platforms)
+## One-command install
 
-Download the archive for your platform from the [Releases](https://github.com/upendra7470/clip/releases) page and extract it:
+### macOS and Linux
 
-- **macOS Apple Silicon:** `clip_*_darwin_arm64.tar.gz`
-- **macOS Intel:** `clip_*_darwin_amd64.tar.gz`
-- **Linux:** `clip_*_linux_amd64.tar.gz` (or `linux_arm64`)
-- **Windows:** `clip_*_windows_amd64.zip`
-
-Then follow the steps in the [README](README.md#option-1--download-a-prebuilt-binary-all-platforms).
-
-### Using Make (macOS / Linux)
-
-```bash
-make install
+```sh
+curl -fsSL https://raw.githubusercontent.com/upendra7470/clip/main/install.sh | sh
 ```
 
-This will:
-1. Build the Clip binary
-2. Install it to `~/.local/bin/clip`
-3. Make sure the directory exists
-4. Clean up build artifacts
+The installer detects the operating system and CPU, downloads the matching binary, and installs it as `~/.local/bin/clip`. Override the destination when needed:
 
-### Using go install (all platforms)
-
-```bash
-go install github.com/upendra7470/clip/cmd/clip@latest
+```sh
+curl -fsSL https://raw.githubusercontent.com/upendra7470/clip/main/install.sh | CLIP_INSTALL_DIR=/usr/local/bin sh
 ```
 
-This installs the binary to your `$GOPATH/bin` directory. Ensure this directory is in your PATH.
+If `~/.local/bin` is not already on `PATH`, add this line to `~/.zshrc` or `~/.bashrc`:
 
-### Build from Source (all platforms)
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/upendra7470/clip.git
-   cd clip
-   ```
-
-2. Build and install:
-   ```bash
-   # macOS / Linux
-   go build -o clip ./cmd/clip
-   mv clip ~/.local/bin/clip
-
-   # Windows (PowerShell)
-   go build -o clip.exe ./cmd/clip
-   Move-Item clip.exe "$HOME\.local\bin\"
-   ```
-
-## Linux Clipboard Backend
-
-Clip requires `xclip` (X11) or `wl-copy` (Wayland) on Linux:
-
-```bash
-sudo apt install xclip      # Debian / Ubuntu
-sudo dnf install xclip      # Fedora
-sudo pacman -S xclip        # Arch
+```sh
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-No backend needed on macOS (`pbcopy`) or Windows (`clip.exe`) — both are built in.
+### Windows PowerShell
 
-## OCR Engine
-
-Document extraction works with the Clip binary alone. Image OCR uses Tesseract:
-
-```bash
-# Ubuntu / Debian
-sudo apt install tesseract-ocr
-sudo apt install poppler-utils
-
-# Fedora
-sudo dnf install tesseract
-sudo dnf install poppler-utils
-
-# macOS
-brew install tesseract
-brew install poppler
-
-# Windows
-winget install UB-Mannheim.TesseractOCR
-winget install oschwartz10612.Poppler
+```powershell
+irm https://raw.githubusercontent.com/upendra7470/clip/main/install.ps1 | iex
 ```
 
-Verify the installation with `clip --ocr-status`. Tesseract handles images, while Poppler enables automatic OCR fallback for scanned PDFs. Extra recognition languages use Tesseract language packs and the `--ocr-lang` option.
+The installer places `clip.exe` in `%USERPROFILE%\.local\bin` and adds that directory to the user `PATH`. Open a new terminal after installation if the current terminal does not find `clip`.
 
-## PATH Setup
+## Verify
 
-### Verify Installation
-
-```bash
-which clip
-```
-
-Should output: `/usr/local/bin/clip`, `~/.local/bin/clip`, or `~/go/bin/clip`
-
-### Add to PATH (if needed)
-
-If you installed to `~/.local/bin` or `~/go/bin` and it's not in your PATH:
-
-```bash
-# Add to your shell configuration (.bashrc, .zshrc, etc.)
-export PATH=$PATH:$HOME/.local/bin:$HOME/go/bin
-
-# Then reload
-source ~/.zshrc  # or source ~/.bashrc
-```
-
-### Resolve PATH Conflicts
-
-If `which clip` shows a Python package instead of the Go binary:
-
-1. Check your PATH order:
-   ```bash
-   echo $PATH
-   ```
-
-2. Ensure `/usr/local/bin`, `~/.local/bin`, or `~/go/bin` comes before Python directories.
-
-3. Use the full path temporarily:
-   ```bash
-   /usr/local/bin/clip --version
-   ```
-
-## Uninstallation
-
-### Remove from ~/.local/bin
-
-```bash
-rm ~/.local/bin/clip
-```
-
-### Remove from /usr/local/bin
-
-```bash
-sudo rm /usr/local/bin/clip
-```
-
-### Remove from Go bin directory
-
-```bash
-rm ~/go/bin/clip
-```
-
-### Using Make
-
-```bash
-make uninstall
-```
-
-## Usage Examples
-
-### Basic usage
-```bash
-clip document.pdf
-```
-
-### With exact path
-```bash
-clip ./files/report.pdf
-```
-
-### With absolute path
-```bash
-clip /full/path/to/document.pdf
-```
-
-### Help
-```bash
-clip --help
-```
-
-### Version
-```bash
+```sh
 clip --version
+clip --ocr-status
 ```
 
-## Smart File Resolution
+The OCR status should report that image and scanned-PDF OCR are ready.
 
-Clip automatically searches for files in these locations:
-1. Current directory
-2. Absolute path if provided
-3. ~/Downloads
-4. ~/Desktop
-5. ~/Documents
+## Direct download
 
-If multiple files with the same name are found, Clip will prompt you to select one.
+Download one file from [GitHub Releases](https://github.com/upendra7470/clip/releases/latest):
 
-## Troubleshooting
+| System | File |
+|---|---|
+| Windows x64 | `clip_windows_amd64.exe` |
+| macOS Apple Silicon | `clip_darwin_arm64` |
+| macOS Intel | `clip_darwin_amd64` |
+| Linux x64 | `clip_linux_amd64` |
+| Linux ARM64 | `clip_linux_arm64` |
 
-### "command not found" after installation
+Rename it to `clip` (`clip.exe` on Windows), make it executable on macOS/Linux with `chmod +x clip`, and place it in a directory on `PATH`. Compare its SHA-256 hash with the release's `checksums.txt` before running it in security-sensitive environments.
 
-1. Verify the binary exists:
-   ```bash
-   ls /usr/local/bin/clip
-   ```
+## Build from source
 
-2. Check your PATH:
-   ```bash
-   echo $PATH
-   ```
+Source builds require Go 1.26 or newer:
 
-3. Try running with full path:
-   ```bash
-   /usr/local/bin/clip --version
-   ```
-
-### Permission denied
-
-```bash
-sudo chmod +x /usr/local/bin/clip
+```sh
+git clone https://github.com/upendra7470/clip.git
+cd clip
+go test ./...
+go build -o clip ./cmd/clip
 ```
 
-### Python clip conflict persists
+The GitHub release workflow additionally compiles the native OCR engine for each target and embeds the pinned models. For that reason, use an official release when you need the zero-dependency OCR package.
 
-1. Rename the Go binary:
-   ```bash
-   sudo mv /usr/local/bin/clip /usr/local/bin/clip-doc
-   ```
+## Uninstall
 
-2. Use the renamed command:
-   ```bash
-   clip-doc document.pdf
-   ```
+macOS or Linux:
 
-## Makefile Commands
-
-```bash
-make build      # Build the binary
-make install    # Install to ~/.local/bin
-make uninstall  # Remove installation
-make clean      # Clean build artifacts
-make test       # Run tests
-make fmt        # Format code
-make vet        # Run go vet
-make help       # Show help
+```sh
+rm "$HOME/.local/bin/clip"
 ```
 
-## Verification
+Windows PowerShell:
 
-After installation, verify everything works:
-
-```bash
-clip --version      # Should show "clip v1.0.0"
-clip --help         # Should show usage information
-clip sample.txt     # Should extract and copy text
+```powershell
+Remove-Item "$HOME\.local\bin\clip.exe"
 ```

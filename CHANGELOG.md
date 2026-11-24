@@ -9,9 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Automatic OCR for PNG, JPEG, GIF, BMP, TIFF, and WebP images through Tesseract
-- Automatic scanned-PDF OCR fallback through Poppler and Tesseract
-- `--ocr-lang`, `--ocr-psm`, and `--ocr-status` options
+- Self-contained offline OCR for PNG, JPEG, GIF, BMP, TIFF, and WebP images
+- Automatic scanned-PDF OCR fallback with pure-Go image extraction
+- `--ocr-status` option
+- One-command installers for Windows, macOS, and Linux
+- Native X11, Wayland, macOS, and Windows clipboard integration without helper programs
 - Image dimension, pixel-count, and OCR timeout safety limits
 
 ### Improved
