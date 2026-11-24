@@ -18,12 +18,12 @@ jobs:
           - runner: ubuntu-latest
             goos: linux
             goarch: amd64
-            rust_target: x86_64-unknown-linux-gnu
+            rust_target: x86_64-unknown-linux-musl
             extension: ""
           - runner: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
-            rust_target: aarch64-unknown-linux-gnu
+            rust_target: aarch64-unknown-linux-musl
             extension: ""
           - runner: macos-15-intel
             goos: darwin
@@ -64,8 +64,20 @@ jobs:
         with:
           targets: ${{ matrix.rust_target }}
 
+      - name: Install static Linux toolchain
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
       - name: Build native OCR engine
+        if: runner.os != 'Linux'
         shell: bash
+        run: cargo build --locked --release -p ocrs-cli --features onnx --target ${{ matrix.rust_target }} --manifest-path .release/ocrs/Cargo.toml
+
+      - name: Build static Linux OCR engine
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          CC: musl-gcc
         run: cargo build --locked --release -p ocrs-cli --features onnx --target ${{ matrix.rust_target }} --manifest-path .release/ocrs/Cargo.toml
 
       - name: Bundle OCR engine and verified models
