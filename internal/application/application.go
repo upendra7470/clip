@@ -41,14 +41,28 @@ func (app *Application) Extract(ctx context.Context, filePath string) error {
 // ExtractWithRange processes a document file with optional range through the complete pipeline:
 // detect → lookup parser → parse → copy to clipboard.
 func (app *Application) ExtractWithRange(ctx context.Context, filePath string, rangeObj *parser.Range) error {
+	result, err := app.ExtractText(ctx, filePath, rangeObj, parser.Selection{})
+	if err != nil {
+		return err
+	}
+	if err := app.clipboard.Copy(result.Text); err != nil {
+		return fmt.Errorf("failed to copy to clipboard: %w", err)
+	}
+	return nil
+}
+
+// ExtractText runs the extraction pipeline without choosing a destination.
+// Callers can render the returned text as Markdown/JSON, write it to a file,
+// combine it with other documents, or copy it to a clipboard.
+func (app *Application) ExtractText(ctx context.Context, filePath string, rangeObj *parser.Range, selection parser.Selection) (parser.ParseResult, error) {
 	// Step 0: Guard file size (prevent huge files)
 	if info, statErr := os.Stat(filePath); statErr == nil {
 		if info.Size() > security.MaxInputFileSize {
-			return fmt.Errorf("file size %d bytes exceeds maximum allowed %d bytes", info.Size(), security.MaxInputFileSize)
+			return parser.ParseResult{}, fmt.Errorf("file size %d bytes exceeds maximum allowed %d bytes", info.Size(), security.MaxInputFileSize)
 		}
 	} else if !os.IsNotExist(statErr) && !os.IsPermission(statErr) {
 		// If we can't stat for other reasons, return the error
-		return fmt.Errorf("cannot stat file %s: %w", filePath, statErr)
+		return parser.ParseResult{}, fmt.Errorf("cannot stat file %s: %w", filePath, statErr)
 	}
 
 	// Step 1: Detect file type
@@ -59,20 +73,19 @@ func (app *Application) ExtractWithRange(ctx context.Context, filePath string, r
 		if ext == "" {
 			ext = "unknown"
 		}
-		return fmt.Errorf("unsupported file type: %s\n\nsupported formats:\nPDF, DOCX, TXT, Markdown, PPTX, CSV, XLSX, JSON, XML, HTML, YAML, RTF, ODT, ODS, PPT, PNG, JPEG, GIF, BMP, TIFF, WebP", ext)
+		return parser.ParseResult{}, fmt.Errorf("unsupported file type: %s\n\nsupported formats:\nPDF, DOCX, TXT, Markdown, PPTX, CSV, XLSX, JSON, XML, HTML, YAML, RTF, ODT, ODS, PPT, PNG, JPEG, GIF, BMP, TIFF, WebP", ext)
 	}
 
 	// Step 2: Lookup parser
 	parserObj, err := app.reg.Lookup(fileType)
 	if err != nil {
-		return fmt.Errorf("parser not found for file type: %s", fileType)
+		return parser.ParseResult{}, fmt.Errorf("parser not found for file type: %s", fileType)
 	}
 
 	// Step 3: Parse document
 	req := parser.ParseRequest{
-		File: filePath,
-		// Selection is intentionally empty for now
-		Selection: parser.Selection{},
+		File:      filePath,
+		Selection: selection,
 	}
 
 	var result parser.ParseResult
@@ -91,7 +104,7 @@ func (app *Application) ExtractWithRange(ctx context.Context, filePath string, r
 				// keep err as is
 			}
 		} else {
-			return fmt.Errorf("range extraction is not currently supported for %s files", fileType)
+			return parser.ParseResult{}, fmt.Errorf("range extraction is not currently supported for %s files", fileType)
 		}
 	} else {
 		result, err = parserObj.ParseWithContext(ctx, req)
@@ -100,19 +113,13 @@ func (app *Application) ExtractWithRange(ctx context.Context, filePath string, r
 	if err != nil {
 		// Check for permission errors
 		if os.IsPermission(err) {
-			return fmt.Errorf("cannot access file: %s\nreason: permission denied", filePath)
+			return parser.ParseResult{}, fmt.Errorf("cannot access file: %s\nreason: permission denied", filePath)
 		}
 		// Check for file not found errors
 		if os.IsNotExist(err) {
-			return fmt.Errorf("file not found: %s", filePath)
+			return parser.ParseResult{}, fmt.Errorf("file not found: %s", filePath)
 		}
-		return fmt.Errorf("failed to extract text from file: %w", err)
+		return parser.ParseResult{}, fmt.Errorf("failed to extract text from file: %w", err)
 	}
-
-	// Step 4: Copy to clipboard
-	if err := app.clipboard.Copy(result.Text); err != nil {
-		return fmt.Errorf("failed to copy to clipboard: %w", err)
-	}
-
-	return nil
+	return result, nil
 }

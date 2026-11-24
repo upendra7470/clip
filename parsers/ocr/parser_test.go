@@ -17,8 +17,38 @@ type fakeRunner struct {
 	err  error
 }
 
+type sequenceRunner struct {
+	outputs []string
+	calls   int
+}
+
+func (r *sequenceRunner) Recognize(context.Context, string) (string, error) {
+	output := r.outputs[r.calls]
+	r.calls++
+	return output, nil
+}
+
 func (f fakeRunner) Recognize(context.Context, string) (string, error) {
 	return f.text, f.err
+}
+
+func TestSmartOCRChoosesBestOrientation(t *testing.T) {
+	path := testImage(t, 20, 10)
+	runner := &sequenceRunner{outputs: []string{"x", "short", "correct orientation text", "no"}}
+	p := NewParserWithRunner(runner)
+	result, err := p.ParseWithContext(context.Background(), parser.ParseRequest{
+		File:      path,
+		Selection: parser.Selection{Smart: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "correct orientation text" {
+		t.Fatalf("Text = %q", result.Text)
+	}
+	if runner.calls != 4 {
+		t.Fatalf("OCR calls = %d, want 4", runner.calls)
+	}
 }
 
 func TestOCRCopiesRecognizedText(t *testing.T) {

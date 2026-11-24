@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Copy text with Clip
+Comment=Extract document text as smart Markdown
+Exec=clip --smart %f
+Icon=edit-copy
+Terminal=true
+NoDisplay=true
+MimeType=application/pdf;image/png;image/jpeg;text/plain;text/markdown;

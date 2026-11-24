@@ -62,6 +62,30 @@ clip --list workbook.xlsx      # inspect available units
 clip --ocr-status              # verify the bundled OCR engine
 ```
 
+## Preview: Clip 2.0 smart workflows
+
+The v2 branch adds structure-aware output, batch extraction, OCR cleanup, and AI-ready chunks while keeping the original command compatible.
+
+```sh
+clip --smart scan.png
+clip --format markdown --stdout spreadsheet.xlsx
+clip --format jsonl --chunks 1200 --output handbook.jsonl handbook.pdf
+clip --smart --recursive --output knowledge.md ./documents
+clip --completion zsh > ~/.zfunc/_clip
+```
+
+- `--smart` normalizes contrast, upscales small scans, and produces clean Markdown.
+- `--format text|markdown|json|jsonl` selects structured output.
+- `--chunks N` creates Unicode-safe chunks for RAG and AI pipelines.
+- Directories can be processed in deterministic order, with a 1,000-file safety limit.
+- Tabular parser output becomes Markdown tables automatically.
+- `--lang auto` recognizes printed Latin-script languages offline; language hints include English, French, German, Spanish, Italian, Portuguese, and Dutch.
+- Optional Explorer, Finder, and Linux file-manager templates live in [`integrations/`](integrations/).
+
+OCR remains local and offline. The bundled v2 model covers Latin-script languages; additional writing systems require future model packs and are not claimed by the current preview.
+
+See the [Clip 2.0 preview specification](docs/V2.md) for implementation details and compatibility guarantees.
+
 When only a filename is supplied, Clip can find it in the current directory, Downloads, Desktop, or Documents.
 
 ## Why Clip
