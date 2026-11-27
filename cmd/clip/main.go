@@ -7,12 +7,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/upendra7470/clip/internal/application"
 	"github.com/upendra7470/clip/internal/clipboard"
 	"github.com/upendra7470/clip/internal/detect"
+	clipoutput "github.com/upendra7470/clip/internal/output"
 	"github.com/upendra7470/clip/internal/parser"
 	"github.com/upendra7470/clip/internal/registry"
 	"github.com/upendra7470/clip/internal/resolver"
@@ -49,6 +51,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	listFlag := flagSet.Bool("list", false, "List document units (pages, sections, slides, etc.)")
 	inspectFlag := flagSet.Bool("inspect", false, "Inspect document units (pages, sections, slides, etc.)")
 	ocrStatus := flagSet.Bool("ocr-status", false, "Show OCR engine availability")
+	formatFlag := flagSet.String("format", "text", "Output format: text, markdown, json, or jsonl")
+	chunkSize := flagSet.Int("chunks", 0, "Split output into AI-ready chunks of approximately N characters")
+	outputPath := flagSet.String("output", "", "Write extracted content to a file instead of the clipboard")
+	stdoutFlag := flagSet.Bool("stdout", false, "Write extracted content to standard output")
+	smartFlag := flagSet.Bool("smart", false, "Enable OCR cleanup and structure-preserving Markdown output")
+	recursiveFlag := flagSet.Bool("recursive", false, "Process supported files in subdirectories")
+	languageFlag := flagSet.String("lang", "auto", "OCR language hint: auto, latin, en, fr, de, es, it, pt, or nl")
+	completionFlag := flagSet.String("completion", "", "Print shell completion: bash, zsh, fish, or powershell")
 	err := flagSet.Parse(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "Error parsing flags: %v\n", err)
@@ -65,6 +75,32 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if *versionFlag {
 		fmt.Fprintf(stdout, "clip v%s\n", version)
 		return 0
+	}
+
+	if *completionFlag != "" {
+		script, err := completionScript(*completionFlag)
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		fmt.Fprint(stdout, script)
+		return 0
+	}
+	if *chunkSize < 0 {
+		fmt.Fprintln(stderr, "Error: --chunks must be zero or greater")
+		return 1
+	}
+	if err := validateOCRLanguage(*languageFlag); err != nil {
+		fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+	outputFormat, err := clipoutput.ParseFormat(*formatFlag)
+	if err != nil {
+		fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+	if *smartFlag && outputFormat == clipoutput.Text {
+		outputFormat = clipoutput.Markdown
 	}
 
 	if *ocrStatus {
@@ -236,6 +272,56 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "Error: %v\n", err)
 		return 1
 	}
+	info, err := os.Stat(resolvedPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+	v2Mode := *smartFlag || *formatFlag != "text" || *chunkSize > 0 || *outputPath != "" || *stdoutFlag || *recursiveFlag || *languageFlag != "auto" || info.IsDir()
+	if v2Mode {
+		paths := []string{resolvedPath}
+		if info.IsDir() {
+			paths, err = batchFiles(resolvedPath, *recursiveFlag)
+			if err != nil {
+				fmt.Fprintf(stderr, "Error: %v\n", err)
+				return 1
+			}
+		}
+		selection := parser.Selection{Smart: *smartFlag, Language: *languageFlag}
+		documents, err := extractDocuments(ctx, app, paths, rangeObj, selection)
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		rendered, err := clipoutput.Render(documents, outputFormat, *chunkSize)
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		destination := "clipboard"
+		switch {
+		case *outputPath != "":
+			if err := os.WriteFile(*outputPath, []byte(rendered), 0600); err != nil {
+				fmt.Fprintf(stderr, "Error: write output: %v\n", err)
+				return 1
+			}
+			destination = *outputPath
+		case *stdoutFlag:
+			fmt.Fprintln(stdout, rendered)
+			destination = "stdout"
+		default:
+			if err := clipboardAdapter.Copy(rendered); err != nil {
+				fmt.Fprintf(stderr, "Error: failed to copy to clipboard: %v\n", err)
+				return 1
+			}
+		}
+		statusWriter := stdout
+		if *stdoutFlag {
+			statusWriter = stderr
+		}
+		fmt.Fprintf(statusWriter, "✓ Processed %d file(s) as %s → %s\n", len(documents), outputFormat, destination)
+		return 0
+	}
 
 	// Detect file type to determine range unit for success message
 	fileType, err := detect.Type(resolvedPath)
@@ -388,6 +474,9 @@ func showHelp() {
 	fmt.Println("    clip \"The Brain.docx\" 1-3")
 	fmt.Println("    clip presentation.pptx 2-5")
 	fmt.Println("    clip spreadsheet.xlsx 2-10")
+	fmt.Println("    clip --smart scanned.pdf")
+	fmt.Println("    clip --format jsonl --chunks 1200 --stdout handbook.pdf")
+	fmt.Println("    clip --recursive --output knowledge.md ./documents")
 	fmt.Println()
 	fmt.Println("Clip searches common locations when only a filename is provided.")
 	fmt.Println()
@@ -411,8 +500,107 @@ func showHelp() {
 	fmt.Println("  clip --version")
 	fmt.Println("  clip --help")
 	fmt.Println("  clip --ocr-status")
+	fmt.Println("  clip --completion bash|zsh|fish|powershell")
+	fmt.Println()
+	fmt.Println("V2 workflow options:")
+	fmt.Println("  --smart             Clean OCR and preserve structure as Markdown")
+	fmt.Println("  --format <format>   text, markdown, json, or jsonl")
+	fmt.Println("  --chunks <size>     Create AI-ready chunks")
+	fmt.Println("  --output <file>     Write to a file instead of clipboard")
+	fmt.Println("  --stdout            Print extracted content")
+	fmt.Println("  --recursive         Process directories recursively")
+	fmt.Println("  --lang <hint>       Auto-detect supported Latin-script languages")
 	fmt.Println()
 	fmt.Println("OCR is built in and works offline; no external tools are required.")
+}
+
+func extractDocuments(ctx context.Context, app *application.Application, paths []string, rangeObj *parser.Range, selection parser.Selection) ([]clipoutput.Document, error) {
+	documents := make([]clipoutput.Document, 0, len(paths))
+	for _, path := range paths {
+		result, err := app.ExtractText(ctx, path, rangeObj, selection)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		documents = append(documents, clipoutput.Document{
+			Source: path,
+			Type:   strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), "."),
+			Text:   result.Text,
+		})
+	}
+	return documents, nil
+}
+
+func batchFiles(root string, recursive bool) ([]string, error) {
+	const maxBatchFiles = 1000
+	var paths []string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			if path != root && !recursive {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !isSupportedBatchExtension(filepath.Ext(path)) {
+			return nil
+		}
+		if _, err := detect.Type(path); err != nil {
+			return nil
+		}
+		paths = append(paths, path)
+		if len(paths) > maxBatchFiles {
+			return fmt.Errorf("batch exceeds the %d-file safety limit", maxBatchFiles)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan directory: %w", err)
+	}
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("no supported documents found in %s", root)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+func isSupportedBatchExtension(extension string) bool {
+	switch strings.ToLower(extension) {
+	case ".pdf", ".docx", ".ppt", ".pptx", ".odt", ".rtf", ".txt", ".md", ".csv", ".xlsx", ".ods", ".json", ".xml", ".html", ".htm", ".yaml", ".yml", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp":
+		return true
+	default:
+		return false
+	}
+}
+
+func validateOCRLanguage(language string) error {
+	switch strings.ToLower(language) {
+	case "auto", "latin", "en", "eng", "fr", "de", "es", "it", "pt", "nl":
+		return nil
+	default:
+		return fmt.Errorf("unsupported OCR language hint %q; v2 supports automatic Latin-script recognition", language)
+	}
+}
+
+func completionScript(shell string) (string, error) {
+	flags := "--help --version --list --inspect --ocr-status --smart --format --chunks --output --stdout --recursive --lang --completion"
+	switch strings.ToLower(shell) {
+	case "bash":
+		return "_clip() { COMPREPLY=( $(compgen -W '" + flags + "' -- \"${COMP_WORDS[COMP_CWORD]}\") ); }\ncomplete -F _clip clip\n", nil
+	case "zsh":
+		return "#compdef clip\n_arguments '*:file:_files' '" + strings.ReplaceAll(flags, " ", "' '") + "'\n", nil
+	case "fish":
+		var result strings.Builder
+		for _, value := range strings.Fields(flags) {
+			fmt.Fprintf(&result, "complete -c clip -l %s\n", strings.TrimPrefix(value, "--"))
+		}
+		return result.String(), nil
+	case "powershell":
+		return "Register-ArgumentCompleter -Native -CommandName clip -ScriptBlock { param($wordToComplete) @('" + strings.ReplaceAll(flags, " ", "','") + "') | Where-Object { $_ -like \"$wordToComplete*\" } }\n", nil
+	default:
+		return "", fmt.Errorf("unsupported shell %q", shell)
+	}
 }
 
 // getFilePathAndRangeFromArgs extracts the file path and optional range argument from parsed flag arguments.

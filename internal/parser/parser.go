@@ -24,6 +24,10 @@ type Selection struct {
 	Pages string
 	Range string
 	Query string
+	// Smart enables OCR cleanup and other format-specific quality improvements.
+	Smart bool
+	// Language is an OCR language hint. "auto" detects supported Latin-script text.
+	Language string
 }
 
 // ParseResult represents the result of a parse operation

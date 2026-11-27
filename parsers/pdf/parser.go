@@ -82,7 +82,7 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 	// Parse the PDF
 	pdfReader, err := pdf.NewReader(file, fileInfo.Size())
 	if err != nil {
-		return p.ocrPages(ctx, req.File, 1, -1)
+		return p.ocrPages(ctx, req.File, 1, -1, req.Selection)
 	}
 
 	// Extract text from all pages
@@ -108,7 +108,7 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 	}
 
 	if text.Len() == 0 {
-		return p.ocrPages(ctx, req.File, 1, numPages)
+		return p.ocrPages(ctx, req.File, 1, numPages, req.Selection)
 	}
 
 	return parser.ParseResult{
@@ -151,7 +151,7 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	// Parse the PDF
 	pdfReader, err := pdf.NewReader(file, fileInfo.Size())
 	if err != nil {
-		return p.ocrPages(ctx, req.File, start, end)
+		return p.ocrPages(ctx, req.File, start, end, req.Selection)
 	}
 
 	// Validate page range against actual document size
@@ -184,7 +184,7 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	}
 
 	if text.Len() == 0 {
-		return p.ocrPages(ctx, req.File, start, end)
+		return p.ocrPages(ctx, req.File, start, end, req.Selection)
 	}
 
 	return parser.ParseResult{
@@ -192,7 +192,7 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	}, nil
 }
 
-func (p *Parser) ocrPages(ctx context.Context, path string, start, end int) (parser.ParseResult, error) {
+func (p *Parser) ocrPages(ctx context.Context, path string, start, end int, selection parser.Selection) (parser.ParseResult, error) {
 	tempDir, err := os.MkdirTemp("", "clip-pdf-ocr-*")
 	if err != nil {
 		return parser.ParseResult{}, wrapError("failed to prepare PDF OCR", err)
@@ -227,7 +227,7 @@ func (p *Parser) ocrPages(ctx context.Context, path string, start, end int) (par
 
 	var result strings.Builder
 	for index, imagePath := range images {
-		text, err := ocr.Recognize(ctx, imagePath)
+		text, err := ocr.RecognizeSmart(ctx, imagePath, selection.Smart)
 		if err != nil {
 			return parser.ParseResult{}, wrapError(fmt.Sprintf("failed to OCR extracted PDF image %d", index+1), err)
 		}

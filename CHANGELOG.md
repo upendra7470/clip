@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Clip 2.0 smart workflow with `--smart` OCR cleanup and Markdown output
+- Structured `text`, `markdown`, `json`, and `jsonl` rendering
+- Unicode-safe `--chunks` output for AI and RAG pipelines
+- Deterministic directory processing with optional recursion and safety limits
+- Bash, Zsh, Fish, and PowerShell completion generation
+- Optional Windows Explorer, macOS Finder, and Linux file-manager integration templates
+- Automatic Markdown table rendering for tabular parser output
+- Latin-script OCR language hints and automatic recognition
 - Self-contained offline OCR for PNG, JPEG, GIF, BMP, TIFF, and WebP images
 - Automatic scanned-PDF OCR fallback with pure-Go image extraction
 - `--ocr-status` option

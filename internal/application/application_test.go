@@ -85,6 +85,25 @@ func TestExtractSuccess(t *testing.T) {
 	}
 }
 
+func TestExtractTextDoesNotWriteClipboard(t *testing.T) {
+	reg := registry.New()
+	if err := reg.Register(filetype.FileTypeTXT, &mockParser{fileType: filetype.FileTypeTXT, content: "portable text"}); err != nil {
+		t.Fatal(err)
+	}
+	copied := false
+	app := New(reg, &mockClipboard{copyFunc: func(string) error {
+		copied = true
+		return nil
+	}})
+	result, err := app.ExtractText(context.Background(), "test.txt", nil, parser.Selection{Smart: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "portable text" || copied {
+		t.Fatalf("result = %q, copied = %v", result.Text, copied)
+	}
+}
+
 func TestExtractUnsupportedFileType(t *testing.T) {
 	reg := registry.New()
 	mockClip := &mockClipboard{}

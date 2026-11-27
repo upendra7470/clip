@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,5 +17,71 @@ func TestListReturnsFailureWhenInspectionFails(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := Run([]string{"--list", path}, &stdout, &stderr); code == 0 {
 		t.Fatalf("Run() returned success, stderr = %q", stderr.String())
+	}
+}
+
+func TestStructuredJSONOutput(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(path, []byte("hello v2"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--format", "json", "--stdout", path}, &stdout, &stderr); code != 0 {
+		t.Fatalf("Run() code = %d, stderr = %q", code, stderr.String())
+	}
+	var payload struct {
+		Version   string `json:"version"`
+		Documents []struct {
+			Text string `json:"text"`
+		} `json:"documents"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	if payload.Version != "2.0" || len(payload.Documents) != 1 || payload.Documents[0].Text != "hello v2" {
+		t.Fatalf("unexpected payload: %#v", payload)
+	}
+}
+
+func TestBatchFilesRespectsRecursiveFlag(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "top.txt"), []byte("top"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(root, "nested")
+	if err := os.Mkdir(nested, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "deep.md"), []byte("deep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "not-a-document.desktop"), []byte("[Desktop Entry]"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	flat, err := batchFiles(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flat) != 1 {
+		t.Fatalf("flat batch = %#v", flat)
+	}
+	recursive, err := batchFiles(root, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recursive) != 2 {
+		t.Fatalf("recursive batch = %#v", recursive)
+	}
+}
+
+func TestCompletionScript(t *testing.T) {
+	script, err := completionScript("powershell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains([]byte(script), []byte("--smart")) {
+		t.Fatalf("completion missing v2 options: %s", script)
 	}
 }
