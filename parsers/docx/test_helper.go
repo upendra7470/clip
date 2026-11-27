@@ -12,18 +12,19 @@ func createTestDOCXFromXML(t *testing.T, path string, xmlContent string) {
 	dst := filepath.Join(tempDir, "word", "document.xml")
 
 	// Create directory structure
-	err := os.MkdirAll(filepath.Dir(dst), 0755)
+	err := os.MkdirAll(filepath.Dir(dst), 0700)
 	if err != nil {
 		t.Fatalf("Failed to create directory structure: %v", err)
 	}
 
 	// Write the document.xml with provided content
-	err = os.WriteFile(dst, []byte(xmlContent), 0644)
+	err = os.WriteFile(dst, []byte(xmlContent), 0600)
 	if err != nil {
 		t.Fatalf("Failed to write document.xml: %v", err)
 	}
 
 	// Create the DOCX file (ZIP archive)
+	// #nosec G304 -- tests create the caller-provided path inside t.TempDir.
 	zipFile, err := os.Create(path)
 	if err != nil {
 		t.Fatalf("Failed to create DOCX file: %v", err)
@@ -43,9 +44,4 @@ func createTestDOCXFromXML(t *testing.T, path string, xmlContent string) {
 	if err != nil {
 		t.Fatalf("Failed to write XML content to ZIP: %v", err)
 	}
-}
-
-func extractContentFromXML(xmlContent string) (string, error) {
-	text, _, err := extractStructuredContentFromXML(xmlContent, false)
-	return text, err
 }

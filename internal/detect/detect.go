@@ -29,6 +29,7 @@ func Type(path string) (filetype.FileType, error) {
 	}
 
 	// Try magic-byte detection for files with an unknown extension.
+	// #nosec G304 -- detection intentionally inspects the local path selected by the user.
 	f, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("unsupported file extension: .%s", ext)

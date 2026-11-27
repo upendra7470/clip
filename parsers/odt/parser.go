@@ -81,6 +81,7 @@ func (p *Parser) ParseDirectory(dirPath string) ([]*parser.DocumentUnit, error) 
 
 // readODTContent opens an ODT file (a ZIP archive) and returns its content.xml.
 func readODTContent(path string) (string, error) {
+	// #nosec G304 -- Clip intentionally opens the local document path selected by the user.
 	file, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {

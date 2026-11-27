@@ -167,6 +167,7 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 // readODSLines opens an ODS file and returns row strings.
 // ODS files are ZIP archives containing content.xml; anything else is rejected as invalid.
 func readODSLines(path string) ([]string, error) {
+	// #nosec G304 -- Clip intentionally opens the local document path selected by the user.
 	file, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {

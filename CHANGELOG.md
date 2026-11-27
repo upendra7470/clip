@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - One-command installers for Windows, macOS, and Linux
 - Native X11, Wayland, macOS, and Windows clipboard integration without helper programs
 - Image dimension, pixel-count, and OCR timeout safety limits
+- SHA-256-verifying installers and signed GitHub build-provenance attestations
+- Dependabot configuration and a vulnerability gate for releases
 
 ### Improved
 
@@ -30,12 +32,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TXT, CSV, and XLSX range extraction streams requested content
 - PDF text assembly uses amortized linear string building
 - Linux clipboard handling retries X11 when Wayland copying fails
+- Release inputs and GitHub Actions are pinned to immutable revisions
+- OCR cache files are verified by content hash and private permissions
 
 ### Fixed
 
 - Markdown beginning with `[` is no longer misclassified as JSON
 - HTML beginning with `<` is no longer misclassified as XML
 - `--list` and `--inspect` return a failure status when inspection fails
+- `--list` and `--inspect` enforce the global input-size limit before parsing
+- XML depth and token limits are enforced by every hardened decoder
+- ZIP archive size accounting rejects per-entry excess and integer overflow
+- Vulnerable Go, Excelize, x/net, and x/crypto versions are upgraded
 
 ## [1.0] - 2026-08-22
 

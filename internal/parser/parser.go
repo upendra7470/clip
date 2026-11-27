@@ -89,6 +89,7 @@ func NewDocumentUnit(text string, meta map[string]interface{}) *DocumentUnit {
 
 // ParseFile parses the given file and returns a DocumentUnit
 func ParseFile(path string) (*DocumentUnit, error) {
+	// #nosec G304 -- Clip intentionally opens the local document path selected by the user.
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)

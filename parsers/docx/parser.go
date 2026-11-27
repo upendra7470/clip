@@ -336,63 +336,6 @@ func extractSectionContent(section Section) string {
 	return content.String()
 }
 
-// extractParagraphsFromXML parses the XML and extracts paragraphs as a slice of strings.
-func extractParagraphsFromXML(xmlContent string) ([]string, int, error) {
-	var paragraphs []string
-	var currentParagraph strings.Builder
-
-	decoder := security.NewXMLDecoder(strings.NewReader(xmlContent))
-	var inTextNode bool
-	var inParagraph bool
-	var currentText strings.Builder
-
-	for {
-		token, err := decoder.Token()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, 0, err
-		}
-
-		switch t := token.(type) {
-		case xml.StartElement:
-			if t.Name.Local == "t" && t.Name.Space == "http://schemas.openxmlformats.org/wordprocessingml/2006/main" {
-				inTextNode = true
-				currentText.Reset()
-			} else if t.Name.Local == "p" && t.Name.Space == "http://schemas.openxmlformats.org/wordprocessingml/2006/main" {
-				inParagraph = true
-			}
-		case xml.CharData:
-			if inTextNode {
-				currentText.Write(t)
-			}
-		case xml.EndElement:
-			if inTextNode && t.Name.Local == "t" && t.Name.Space == "http://schemas.openxmlformats.org/wordprocessingml/2006/main" {
-				inTextNode = false
-				text := strings.TrimSpace(currentText.String())
-				if text != "" {
-					if currentParagraph.Len() > 0 {
-						currentParagraph.WriteString(" ")
-					}
-					currentParagraph.WriteString(text)
-				}
-			} else if inParagraph && t.Name.Local == "p" && t.Name.Space == "http://schemas.openxmlformats.org/wordprocessingml/2006/main" {
-				inParagraph = false
-				paraText := strings.TrimSpace(currentParagraph.String())
-				if paraText != "" {
-					// Strip "Paragraph N:" prefix if present
-					paraText = stripParagraphPrefix(paraText)
-					paragraphs = append(paragraphs, paraText)
-				}
-				currentParagraph.Reset()
-			}
-		}
-	}
-
-	return paragraphs, len(paragraphs), nil
-}
-
 // stripParagraphPrefix removes "Paragraph N:" prefix from paragraph text if present.
 func stripParagraphPrefix(text string) string {
 	// Match "Paragraph N:" pattern where N is a number
@@ -417,12 +360,6 @@ type Section struct {
 type StructuredParagraph struct {
 	Content string
 	IsTable bool
-}
-
-// extractStructuredParagraphsFromXML parses the XML and returns structured paragraphs for range filtering
-func extractStructuredParagraphsFromXML(xmlContent string) ([]StructuredParagraph, error) {
-	_, paragraphs, err := extractStructuredContentFromXML(xmlContent, true)
-	return paragraphs, err
 }
 
 // detectSections identifies logical sections based on headings, breaks, and structural elements

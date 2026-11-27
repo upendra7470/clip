@@ -39,6 +39,7 @@ func (bundledRunner) Recognize(ctx context.Context, file string) (string, error)
 		return "", err
 	}
 
+	// #nosec G204 -- the executable is the embedded, integrity-checked OCR engine; arguments are passed without a shell.
 	cmd := exec.CommandContext(ctx, paths.Engine,
 		"--detect-model", paths.DetectionModel,
 		"--rec-model", paths.RecognitionModel,
@@ -159,12 +160,13 @@ func textScore(text string) int {
 }
 
 func rotatedImage(path string, degrees int) (string, func(), error) {
+	// #nosec G304 -- Clip intentionally opens the local image path selected by the user.
 	file, err := os.Open(path)
 	if err != nil {
 		return "", func() {}, fmt.Errorf("open image for orientation detection: %w", err)
 	}
 	source, _, err := image.Decode(file)
-	file.Close()
+	_ = file.Close()
 	if err != nil {
 		return "", func() {}, fmt.Errorf("decode image for orientation detection: %w", err)
 	}
@@ -194,9 +196,9 @@ func rotatedImage(path string, degrees int) (string, func(), error) {
 		return "", func() {}, fmt.Errorf("prepare OCR orientation: %w", err)
 	}
 	path = temp.Name()
-	cleanup := func() { os.Remove(path) }
+	cleanup := func() { _ = os.Remove(path) }
 	if err := png.Encode(temp, target); err != nil {
-		temp.Close()
+		_ = temp.Close()
 		cleanup()
 		return "", func() {}, fmt.Errorf("encode OCR orientation: %w", err)
 	}
@@ -208,6 +210,7 @@ func rotatedImage(path string, degrees int) (string, func(), error) {
 }
 
 func validateImage(path string) (string, error) {
+	// #nosec G304 -- Clip intentionally opens the local image path selected by the user.
 	file, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("cannot open image: %w", err)
@@ -242,19 +245,21 @@ func prepareImage(path string, smart bool) (string, func(), error) {
 		return path, func() {}, nil
 	}
 
+	// #nosec G304 -- Clip intentionally opens the local image path selected by the user.
 	file, err := os.Open(path)
 	if err != nil {
 		return "", func() {}, fmt.Errorf("open image for conversion: %w", err)
 	}
 	imageData, _, err := image.Decode(file)
-	file.Close()
+	_ = file.Close()
 	if err != nil {
 		return "", func() {}, fmt.Errorf("decode image for OCR: %w", err)
 	}
 	if smart {
 		const maxSmartPixels = 25_000_000
 		bounds := imageData.Bounds()
-		if uint64(bounds.Dx())*uint64(bounds.Dy()) > maxSmartPixels {
+		width, height := bounds.Dx(), bounds.Dy()
+		if width <= 0 || height <= 0 || width > maxSmartPixels/height {
 			return "", func() {}, fmt.Errorf("smart OCR image exceeds the %d-pixel preprocessing limit", maxSmartPixels)
 		}
 		imageData = enhanceForOCR(imageData)
@@ -264,9 +269,9 @@ func prepareImage(path string, smart bool) (string, func(), error) {
 		return "", func() {}, fmt.Errorf("prepare image for OCR: %w", err)
 	}
 	tempPath := temp.Name()
-	cleanup := func() { os.Remove(tempPath) }
+	cleanup := func() { _ = os.Remove(tempPath) }
 	if err := png.Encode(temp, imageData); err != nil {
-		temp.Close()
+		_ = temp.Close()
 		cleanup()
 		return "", func() {}, fmt.Errorf("convert image for OCR: %w", err)
 	}
@@ -298,7 +303,9 @@ func enhanceForOCR(source image.Image) image.Image {
 			case int(value) >= high:
 				gray.Pix[index] = 255
 			default:
-				gray.Pix[index] = uint8((int(value) - low) * 255 / (high - low))
+				scaled := (int(value) - low) * 255 / (high - low)
+				// #nosec G115 -- the surrounding branches prove scaled is in [0, 255].
+				gray.Pix[index] = uint8(scaled)
 			}
 		}
 	}

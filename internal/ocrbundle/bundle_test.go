@@ -29,3 +29,35 @@ func TestResolveEnvironmentOverride(t *testing.T) {
 		t.Fatalf("Engine = %q", paths.Engine)
 	}
 }
+
+func TestInstallFileReplacesSameSizeTampering(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "clip-ocr")
+	if err := os.WriteFile(path, []byte("evil"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := installFile(path, []byte("good"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "good" {
+		t.Fatalf("cached asset was not repaired: %q", content)
+	}
+}
+
+func TestEnsurePrivateDirectoryRejectsSymlink(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "target")
+	if err := os.Mkdir(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if err := ensurePrivateDirectory(link); err == nil {
+		t.Fatal("expected cache symlink to be rejected")
+	}
+}

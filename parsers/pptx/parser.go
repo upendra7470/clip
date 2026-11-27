@@ -93,6 +93,7 @@ func (a *pptxArchive) Close() error {
 // openPPTXSlides indexes slide entries without decompressing them. Callers
 // only inflate the slides they actually need.
 func openPPTXSlides(path string) (*pptxArchive, error) {
+	// #nosec G304 -- Clip intentionally opens the local document path selected by the user.
 	file, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -106,19 +107,19 @@ func openPPTXSlides(path string) (*pptxArchive, error) {
 
 	fileInfo, err := file.Stat()
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, wrapError("failed to get file info", err)
 	}
 
 	zipReader, err := zip.NewReader(file, fileInfo.Size())
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, wrapError(fmt.Sprintf("invalid PPTX file: %s is not a valid ZIP archive", path), err)
 	}
 
 	// Check total uncompressed size to prevent zip bombs
 	if err := security.CheckZipArchiveTotalSize(zipReader.File); err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, wrapError("failed to read PPTX as ZIP archive", err)
 	}
 
