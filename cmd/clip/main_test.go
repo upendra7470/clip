@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/upendra7470/clip/internal/security"
 )
 
 func TestListReturnsFailureWhenInspectionFails(t *testing.T) {
@@ -17,6 +19,29 @@ func TestListReturnsFailureWhenInspectionFails(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := Run([]string{"--list", path}, &stdout, &stderr); code == 0 {
 		t.Fatalf("Run() returned success, stderr = %q", stderr.String())
+	}
+}
+
+func TestListRejectsOversizedFileBeforeReading(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "oversized.html")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(security.MaxInputFileSize + 1); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--list", path}, &stdout, &stderr); code == 0 {
+		t.Fatalf("Run() accepted oversized inspection input")
+	}
+	if !bytes.Contains(stderr.Bytes(), []byte("exceeds maximum allowed")) {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
 	}
 }
 

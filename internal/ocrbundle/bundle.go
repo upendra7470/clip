@@ -1,8 +1,10 @@
 package ocrbundle
 
 import (
+	"crypto/sha256"
 	"embed"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -37,8 +39,12 @@ func Resolve() (Paths, error) {
 	if err != nil {
 		return Paths{}, fmt.Errorf("locate user cache: %w", err)
 	}
-	targetDir := filepath.Join(cacheRoot, "clip", bundleVersion)
-	if err := os.MkdirAll(targetDir, 0700); err != nil {
+	clipDir := filepath.Join(cacheRoot, "clip")
+	if err := ensurePrivateDirectory(clipDir); err != nil {
+		return Paths{}, fmt.Errorf("create OCR cache: %w", err)
+	}
+	targetDir := filepath.Join(clipDir, bundleVersion)
+	if err := ensurePrivateDirectory(targetDir); err != nil {
 		return Paths{}, fmt.Errorf("create OCR cache: %w", err)
 	}
 
@@ -89,16 +95,94 @@ func pathsFromDirectory(engine, modelDir string) (Paths, error) {
 }
 
 func installFile(path string, content []byte, mode os.FileMode) error {
-	if info, err := os.Stat(path); err == nil && info.Size() == int64(len(content)) {
+	matches, err := fileMatches(path, content, mode)
+	if err != nil {
+		return fmt.Errorf("verify OCR asset: %w", err)
+	}
+	if matches {
 		return nil
 	}
-	tempPath := fmt.Sprintf("%s.%d.tmp", path, os.Getpid())
-	if err := os.WriteFile(tempPath, content, mode); err != nil {
+	temp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
 		return fmt.Errorf("write OCR asset: %w", err)
 	}
+	tempPath := temp.Name()
+	cleanup := func() { _ = os.Remove(tempPath) }
+	if err := temp.Chmod(mode); err != nil {
+		_ = temp.Close()
+		cleanup()
+		return fmt.Errorf("secure OCR asset: %w", err)
+	}
+	if _, err := temp.Write(content); err != nil {
+		_ = temp.Close()
+		cleanup()
+		return fmt.Errorf("write OCR asset: %w", err)
+	}
+	if err := temp.Sync(); err != nil {
+		_ = temp.Close()
+		cleanup()
+		return fmt.Errorf("sync OCR asset: %w", err)
+	}
+	if err := temp.Close(); err != nil {
+		cleanup()
+		return fmt.Errorf("close OCR asset: %w", err)
+	}
 	if err := os.Rename(tempPath, path); err != nil {
-		os.Remove(tempPath)
-		return fmt.Errorf("install OCR asset: %w", err)
+		if removeErr := os.Remove(path); removeErr != nil && !os.IsNotExist(removeErr) {
+			cleanup()
+			return fmt.Errorf("replace OCR asset: %w", err)
+		}
+		if retryErr := os.Rename(tempPath, path); retryErr != nil {
+			cleanup()
+			return fmt.Errorf("install OCR asset: %w", retryErr)
+		}
 	}
 	return nil
+}
+
+func ensurePrivateDirectory(path string) error {
+	if err := os.MkdirAll(path, 0700); err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("refusing unsafe cache directory %s", path)
+	}
+	// #nosec G302 -- this is an owner-only directory, not a data file.
+	return os.Chmod(path, 0700)
+}
+
+func fileMatches(path string, content []byte, mode os.FileMode) (bool, error) {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !info.Mode().IsRegular() || info.Size() != int64(len(content)) {
+		return false, nil
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != mode.Perm() {
+		return false, nil
+	}
+	// #nosec G304 -- path is derived from the private OCR cache directory.
+	file, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	hash := sha256.New()
+	_, copyErr := io.Copy(hash, file)
+	closeErr := file.Close()
+	if copyErr != nil {
+		return false, copyErr
+	}
+	if closeErr != nil {
+		return false, closeErr
+	}
+	expected := sha256.Sum256(content)
+	return string(hash.Sum(nil)) == string(expected[:]), nil
 }

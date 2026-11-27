@@ -18,6 +18,7 @@ import (
 	"github.com/upendra7470/clip/internal/parser"
 	"github.com/upendra7470/clip/internal/registry"
 	"github.com/upendra7470/clip/internal/resolver"
+	"github.com/upendra7470/clip/internal/security"
 	"github.com/upendra7470/clip/parsers/csv"
 	"github.com/upendra7470/clip/parsers/docx"
 	"github.com/upendra7470/clip/parsers/html"
@@ -275,6 +276,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	info, err := os.Stat(resolvedPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+	if !info.IsDir() && info.Size() > security.MaxInputFileSize {
+		fmt.Fprintf(stderr, "Error: file size %d bytes exceeds maximum allowed %d bytes\n", info.Size(), security.MaxInputFileSize)
 		return 1
 	}
 	v2Mode := *smartFlag || *formatFlag != "text" || *chunkSize > 0 || *outputPath != "" || *stdoutFlag || *recursiveFlag || *languageFlag != "auto" || info.IsDir()

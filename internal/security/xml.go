@@ -7,14 +7,46 @@ import (
 	"strings"
 )
 
+// XMLDecoder enforces the shared XML nesting and token limits for every
+// document parser that consumes XML through NewXMLDecoder.
+type XMLDecoder struct {
+	*xml.Decoder
+	depth  int
+	tokens int
+}
+
 // NewXMLDecoder creates a hardened XML decoder that prevents XXE and
 // entity expansion attacks. It sets Strict mode and disables custom
 // entity expansion.
-func NewXMLDecoder(r io.Reader) *xml.Decoder {
+func NewXMLDecoder(r io.Reader) *XMLDecoder {
 	decoder := xml.NewDecoder(r)
 	decoder.Strict = true
 	decoder.Entity = map[string]string{}
-	return decoder
+	return &XMLDecoder{Decoder: decoder}
+}
+
+// Token returns the next token while enforcing depth and token-count limits.
+func (d *XMLDecoder) Token() (xml.Token, error) {
+	token, err := d.Decoder.Token()
+	if err != nil {
+		return nil, err
+	}
+	d.tokens++
+	if err := CheckTokenCount(d.tokens); err != nil {
+		return nil, err
+	}
+	switch token.(type) {
+	case xml.StartElement:
+		d.depth++
+		if err := CheckXMLDepth(d.depth); err != nil {
+			return nil, err
+		}
+	case xml.EndElement:
+		if d.depth > 0 {
+			d.depth--
+		}
+	}
+	return token, nil
 }
 
 // CheckXMLDepth tracks XML element nesting depth and returns an error

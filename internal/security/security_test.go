@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -163,5 +164,34 @@ func TestCheckXMLDepth(t *testing.T) {
 	}
 	if err := CheckXMLDepth(MaxXMLDepth + 1); err == nil {
 		t.Error("CheckXMLDepth(MaxXMLDepth+1) should fail")
+	}
+}
+
+func TestXMLDecoderEnforcesDepthLimit(t *testing.T) {
+	input := strings.Repeat("<x>", MaxXMLDepth+1) + strings.Repeat("</x>", MaxXMLDepth+1)
+	decoder := NewXMLDecoder(strings.NewReader(input))
+	for {
+		_, err := decoder.Token()
+		if err != nil {
+			if !strings.Contains(err.Error(), "nesting depth") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			return
+		}
+	}
+}
+
+func TestXMLDecoderEnforcesTokenLimit(t *testing.T) {
+	decoder := NewXMLDecoder(strings.NewReader("<root/>"))
+	decoder.tokens = MaxTokenCount
+	if _, err := decoder.Token(); err == nil || !strings.Contains(err.Error(), "token count") {
+		t.Fatalf("expected token-count error, got %v", err)
+	}
+}
+
+func TestCheckZipArchiveTotalSizeRejectsOversizedMetadata(t *testing.T) {
+	files := []*zip.File{{FileHeader: zip.FileHeader{Name: "huge.bin", UncompressedSize64: ^uint64(0)}}}
+	if err := CheckZipArchiveTotalSize(files); err == nil {
+		t.Fatal("expected oversized Zip64 metadata to be rejected")
 	}
 }

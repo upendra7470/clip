@@ -4,7 +4,9 @@
 
 | Version | Supported |
 |---------|-----------|
-| 1.0.x   | Yes       |
+| 2.0.x   | Yes       |
+| 1.1.x   | Security fixes only |
+| 1.0.x   | No        |
 
 ## Reporting a Vulnerability
 
@@ -32,6 +34,16 @@ Clip enforces several defenses against malicious documents in `internal/security
 - Bounded file reads with maximum input size
 - ZIP archive total-size checks (zip-bomb protection)
 - XML decoder token limits
+- XML nesting-depth limits
 - RTF nesting-depth limits
+- OCR image, pixel, and execution-time limits
+- SHA-256-verified installers and release provenance attestations
+
+Official release binaries include GitHub build-provenance attestations. They
+can be verified with the GitHub CLI:
+
+```bash
+gh attestation verify ./clip_linux_amd64 --repo upendra7470/clip
+```
 
 Reports about bypassing these limits are especially welcome.

@@ -162,12 +162,3 @@ func TestRegistry(t *testing.T) {
 		}
 	})
 }
-
-// asError converts an error to a specific error type if possible.
-func asError(err error, target interface{}) bool {
-	t, ok := target.(interface{ As(interface{}) bool })
-	if !ok {
-		return false
-	}
-	return t.As(err)
-}

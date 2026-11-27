@@ -155,16 +155,16 @@ func (p *Parser) ListUnits(ctx context.Context, req parser.ParseRequest) (int, [
 		rowCount := 0
 		for rows.Next() {
 			if err := ctx.Err(); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return 0, nil, err
 			}
 			rowCount++
 		}
 		if err := rows.Error(); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return 0, nil, wrapError(fmt.Sprintf("failed to count rows in sheet %s", sheetName), err)
 		}
-		rows.Close()
+		_ = rows.Close()
 		totalRows += rowCount
 		sheetInfo = append(sheetInfo, fmt.Sprintf("%s (%d rows)", sheetName, rowCount))
 	}
@@ -223,6 +223,7 @@ func readXLSXLines(path string) ([]string, error) {
 }
 
 func readXLSXRows(path string, start, end int) ([]string, error) {
+	// #nosec G304 -- Clip intentionally opens the local document path selected by the user.
 	file, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {

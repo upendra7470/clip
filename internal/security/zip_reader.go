@@ -44,10 +44,13 @@ func ReadZipFile(zf *zip.File) ([]byte, error) {
 func CheckZipArchiveTotalSize(files []*zip.File) error {
 	var total uint64
 	for _, f := range files {
-		total += f.UncompressedSize64
-		if total > MaxTotalZipUncompressedSize {
+		if f.UncompressedSize64 > MaxZipEntrySize {
+			return fmt.Errorf("ZIP entry %q exceeds maximum size limit of %d bytes (actual: %d bytes)", f.Name, MaxZipEntrySize, f.UncompressedSize64)
+		}
+		if f.UncompressedSize64 > MaxTotalZipUncompressedSize-total {
 			return fmt.Errorf("total uncompressed ZIP content exceeds maximum size limit of %d bytes", MaxTotalZipUncompressedSize)
 		}
+		total += f.UncompressedSize64
 	}
 	return nil
 }

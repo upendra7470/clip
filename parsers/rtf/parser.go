@@ -387,11 +387,16 @@ func tokenizeRTF(rtfContent string) (string, error) {
 				if negative {
 					code = -code
 				}
+				if code < -32768 || code > 32767 {
+					i = j
+					continue
+				}
 				// RTF uses signed 16-bit values; negative codes wrap around
 				if code < 0 {
 					code += 65536
 				}
 				var runeBuf [utf8.UTFMax]byte
+				// #nosec G115 -- code is validated as signed 16-bit above and normalized to [0, 65535].
 				n := utf8.EncodeRune(runeBuf[:], rune(code))
 				for _, b := range runeBuf[:n] {
 					writeByte(b)

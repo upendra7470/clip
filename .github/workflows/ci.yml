@@ -8,6 +8,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Build and Test (${{ matrix.os }})
@@ -19,10 +22,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: true
@@ -39,6 +42,22 @@ jobs:
 
       - name: Build
         run: go build ./...
+
+      - name: Smoke test checksum-verifying installer (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          export CLIP_INSTALL_DIR="$RUNNER_TEMP/clip-install"
+          ./install.sh
+          "$CLIP_INSTALL_DIR/clip" --version
+
+      - name: Smoke test checksum-verifying installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:CLIP_INSTALL_DIR = Join-Path $env:RUNNER_TEMP "clip-install"
+          & .\install.ps1
+          & (Join-Path $env:CLIP_INSTALL_DIR "clip.exe") --version
 
       - name: Install virtual display for clipboard test
         if: runner.os == 'Linux'

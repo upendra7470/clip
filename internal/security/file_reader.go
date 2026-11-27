@@ -16,6 +16,7 @@ var ErrFileTooLarge = fmt.Errorf("file exceeds maximum allowed size of %d bytes"
 // ReadFileBounded reads a file with a size limit.
 // It checks the file size before reading to prevent excessive memory usage.
 func ReadFileBounded(path string) ([]byte, error) {
+	// #nosec G304 -- this bounded reader is specifically for user-selected local files.
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
