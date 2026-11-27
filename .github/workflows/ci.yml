@@ -43,6 +43,22 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Smoke test checksum-verifying installer (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          export CLIP_INSTALL_DIR="$RUNNER_TEMP/clip-install"
+          ./install.sh
+          "$CLIP_INSTALL_DIR/clip" --version
+
+      - name: Smoke test checksum-verifying installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:CLIP_INSTALL_DIR = Join-Path $env:RUNNER_TEMP "clip-install"
+          & .\install.ps1
+          & (Join-Path $env:CLIP_INSTALL_DIR "clip.exe") --version
+
       - name: Install virtual display for clipboard test
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y xvfb
