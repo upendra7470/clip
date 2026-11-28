@@ -28,6 +28,8 @@ type Selection struct {
 	Smart bool
 	// Language is an OCR language hint. "auto" detects supported Latin-script text.
 	Language string
+	// Layout controls spatial reconstruction: auto, plain, or exact.
+	Layout string
 }
 
 // ParseResult represents the result of a parse operation

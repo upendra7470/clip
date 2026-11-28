@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Explicit `clip --image` and `clip --pdf` workflows with automatic type validation
+- `--layout auto|plain|exact` output modes for spatial text reconstruction
+- Coordinate-aware OCR using the bundled engine's word geometry
+- Page-by-page native text and OCR extraction for mixed digital/scanned PDFs
 - Clip 2.0 smart workflow with `--smart` OCR cleanup and Markdown output
 - Structured `text`, `markdown`, `json`, and `jsonl` rendering
 - Unicode-safe `--chunks` output for AI and RAG pipelines
@@ -28,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
+- PDF extraction now uses fragment coordinates, widths, and font sizes to preserve words, lines, paragraphs, and columns
+- OCR output retains detected lines, paragraph spacing, and table-sized gaps instead of flattening text
 - PPTX range extraction inflates only requested slides and uses numeric slide ordering
 - TXT, CSV, and XLSX range extraction streams requested content
 - PDF text assembly uses amortized linear string building
