@@ -2,22 +2,32 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/upendra7470/clip/internal/application"
+	"github.com/upendra7470/clip/internal/autoinput"
 	"github.com/upendra7470/clip/internal/clipboard"
+	"github.com/upendra7470/clip/internal/clipboardocr"
 	"github.com/upendra7470/clip/internal/detect"
+	"github.com/upendra7470/clip/internal/filetype"
+	clipLayout "github.com/upendra7470/clip/internal/layout"
 	clipoutput "github.com/upendra7470/clip/internal/output"
 	"github.com/upendra7470/clip/internal/parser"
 	"github.com/upendra7470/clip/internal/registry"
+	"github.com/upendra7470/clip/internal/remoteinput"
 	"github.com/upendra7470/clip/internal/resolver"
+	"github.com/upendra7470/clip/internal/screencapture"
+	"github.com/upendra7470/clip/internal/searchablepdf"
 	"github.com/upendra7470/clip/internal/security"
 	"github.com/upendra7470/clip/parsers/csv"
 	"github.com/upendra7470/clip/parsers/docx"
@@ -41,6 +51,9 @@ import (
 // Builds without injection (plain `go build`) report "dev".
 var version = "dev"
 
+var captureScreen = screencapture.Capture
+var readClipboardSnapshot = clipboard.ReadSnapshot
+
 func Run(args []string, stdout, stderr io.Writer) int {
 	// Create a new FlagSet to avoid flag redefinition
 	flagSet := flag.NewFlagSet("clip", flag.ContinueOnError)
@@ -57,9 +70,19 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	outputPath := flagSet.String("output", "", "Write extracted content to a file instead of the clipboard")
 	stdoutFlag := flagSet.Bool("stdout", false, "Write extracted content to standard output")
 	smartFlag := flagSet.Bool("smart", false, "Enable OCR cleanup and structure-preserving Markdown output")
+	enhanceFlag := flagSet.Bool("enhance", false, "Use multi-pass preprocessing for difficult OCR")
 	recursiveFlag := flagSet.Bool("recursive", false, "Process supported files in subdirectories")
 	languageFlag := flagSet.String("lang", "auto", "OCR language hint: auto, latin, en, fr, de, es, it, pt, or nl")
 	completionFlag := flagSet.String("completion", "", "Print shell completion: bash, zsh, fish, or powershell")
+	imageFlag := flagSet.Bool("image", false, "Extract an image with layout-aware OCR")
+	pdfFlag := flagSet.Bool("pdf", false, "Extract a PDF while preserving its layout")
+	layoutFlag := flagSet.String("layout", "auto", "Layout reconstruction: auto, plain, or exact")
+	screenFlag := flagSet.Bool("screen", false, "Select a screen region and copy its text")
+	richFlag := flagSet.Bool("rich", false, "Copy formatted HTML with a plain-text fallback")
+	searchableFlag := flagSet.Bool("make-searchable", false, "Add an invisible OCR text layer to a scanned PDF")
+	watchFlag := flagSet.Bool("watch", false, "Continuously OCR images copied to the clipboard")
+	clipboardFlag := flagSet.Bool("clipboard", false, "OCR the image currently on the clipboard")
+	autoFlag := flagSet.Bool("auto", false, "Automatically process the current clipboard content")
 	err := flagSet.Parse(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "Error parsing flags: %v\n", err)
@@ -91,6 +114,34 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "Error: --chunks must be zero or greater")
 		return 1
 	}
+	if *imageFlag && *pdfFlag {
+		fmt.Fprintln(stderr, "Error: --image and --pdf cannot be used together")
+		return 1
+	}
+	if *screenFlag && (*imageFlag || *pdfFlag || *listFlag || *inspectFlag || *recursiveFlag || *searchableFlag) {
+		fmt.Fprintln(stderr, "Error: --screen cannot be combined with file input modes, inspection, or recursion")
+		return 1
+	}
+	if *searchableFlag && (*imageFlag || *pdfFlag || *richFlag || *listFlag || *inspectFlag || *recursiveFlag || *stdoutFlag || *chunkSize > 0 || *formatFlag != "text") {
+		fmt.Fprintln(stderr, "Error: --make-searchable only accepts OCR, layout, language, and --output options")
+		return 1
+	}
+	if *watchFlag && (*autoFlag || *clipboardFlag || *screenFlag || *imageFlag || *pdfFlag || *searchableFlag || *listFlag || *inspectFlag || *recursiveFlag || *outputPath != "" || *chunkSize > 0) {
+		fmt.Fprintln(stderr, "Error: --watch cannot be combined with file modes, inspection, recursion, chunks, or --output")
+		return 1
+	}
+	if *clipboardFlag && (*autoFlag || *screenFlag || *imageFlag || *pdfFlag || *searchableFlag || *listFlag || *inspectFlag || *recursiveFlag || *outputPath != "" || *chunkSize > 0) {
+		fmt.Fprintln(stderr, "Error: --clipboard cannot be combined with file modes, inspection, recursion, chunks, or --output")
+		return 1
+	}
+	if *autoFlag && (*screenFlag || *imageFlag || *pdfFlag || *searchableFlag || *listFlag || *inspectFlag) {
+		fmt.Fprintln(stderr, "Error: --auto cannot be combined with explicit input modes or inspection")
+		return 1
+	}
+	if _, err := clipLayout.ParseMode(*layoutFlag); err != nil {
+		fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
 	if err := validateOCRLanguage(*languageFlag); err != nil {
 		fmt.Fprintf(stderr, "Error: %v\n", err)
 		return 1
@@ -102,6 +153,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	if *smartFlag && outputFormat == clipoutput.Text {
 		outputFormat = clipoutput.Markdown
+	}
+	if *richFlag && (*stdoutFlag || *outputPath != "") {
+		fmt.Fprintln(stderr, "Error: --rich writes to the clipboard and cannot be combined with --stdout or --output")
+		return 1
+	}
+	if *richFlag && outputFormat != clipoutput.Text && outputFormat != clipoutput.Markdown {
+		fmt.Fprintln(stderr, "Error: --rich supports text or markdown format, not JSON")
+		return 1
 	}
 
 	if *ocrStatus {
@@ -236,15 +295,158 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	// Create application with registry and clipboard
 	app := application.New(reg, clipboardAdapter)
+	inputArgs := flagSet.Args()
+	remoteSource := ""
+	if *autoFlag {
+		if len(inputArgs) != 0 {
+			fmt.Fprintln(stderr, "Error: --auto reads from the clipboard and does not accept a filename")
+			return 1
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		snapshot, err := readClipboardSnapshot(ctx)
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		if snapshot.Sensitive {
+			fmt.Fprintln(stderr, "Error: refusing to process sensitive clipboard content")
+			return 1
+		}
+		selection := parser.Selection{Smart: *smartFlag, Enhance: *enhanceFlag, Language: *languageFlag, Layout: *layoutFlag}
+		if len(snapshot.Image) > 0 {
+			text, err := clipboardocr.RecognizeOnce(ctx, clipboard.ImageEvent{Bytes: snapshot.Image}, func(ctx context.Context, path string) (string, error) {
+				return ocr.RecognizeEnhancedLayout(ctx, path, selection.Smart, selection.Enhance, selection.Layout)
+			})
+			if err != nil {
+				fmt.Fprintf(stderr, "Error: %v\n", err)
+				return 1
+			}
+			documents := []clipoutput.Document{{Source: "clipboard.png", Type: "png", Text: text}}
+			destination, err := deliverDocuments(documents, outputFormat, *chunkSize, *outputPath, *stdoutFlag, *richFlag, clipboardAdapter, stdout)
+			if err != nil {
+				fmt.Fprintf(stderr, "Error: %v\n", err)
+				return 1
+			}
+			statusWriter := stdout
+			if *stdoutFlag {
+				statusWriter = stderr
+			}
+			fmt.Fprintf(statusWriter, "✓ Auto-detected clipboard image: recognized %d words → %s\n", len(strings.Fields(text)), destination)
+			return 0
+		}
+		if len(snapshot.Text) > security.MaxInputFileSize {
+			fmt.Fprintf(stderr, "Error: clipboard text exceeds %d bytes\n", security.MaxInputFileSize)
+			return 1
+		}
+
+		input, err := autoinput.Classify(snapshot.Text)
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		switch input.Kind {
+		case autoinput.Path:
+			inputArgs = []string{input.Value}
+		case autoinput.URL:
+			download, err := remoteinput.Fetch(ctx, input.Value)
+			if err != nil {
+				fmt.Fprintf(stderr, "Error: %v\n", err)
+				return 1
+			}
+			defer download.Cleanup()
+			inputArgs = []string{download.Path}
+			remoteSource = download.Source
+		case autoinput.Text:
+			documents := []clipoutput.Document{{Source: "clipboard.txt", Type: "txt", Text: input.Value}}
+			destination, err := deliverDocuments(documents, outputFormat, *chunkSize, *outputPath, *stdoutFlag, *richFlag, clipboardAdapter, stdout)
+			if err != nil {
+				fmt.Fprintf(stderr, "Error: %v\n", err)
+				return 1
+			}
+			statusWriter := stdout
+			if *stdoutFlag {
+				statusWriter = stderr
+			}
+			fmt.Fprintf(statusWriter, "✓ Auto-detected clipboard text: %d characters → %s\n", len([]rune(input.Value)), destination)
+			return 0
+		}
+	}
+	if *clipboardFlag {
+		if len(inputArgs) != 0 {
+			fmt.Fprintln(stderr, "Error: --clipboard does not accept a filename")
+			return 1
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		event, err := clipboard.ReadImage(ctx)
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		err = clipboardocr.RunOnce(ctx, event, clipboardocr.Config{
+			Format: outputFormat,
+			Rich:   *richFlag,
+			Stdout: *stdoutFlag,
+		}, func(ctx context.Context, path string) (string, error) {
+			return ocr.RecognizeEnhancedLayout(ctx, path, *smartFlag, *enhanceFlag, *layoutFlag)
+		}, clipboardAdapter, stdout, stderr)
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+	if *watchFlag {
+		if len(inputArgs) != 0 {
+			fmt.Fprintln(stderr, "Error: --watch does not accept a filename")
+			return 1
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		events, err := clipboard.WatchImages(ctx)
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		statusWriter := stdout
+		if *stdoutFlag {
+			statusWriter = stderr
+		}
+		fmt.Fprintln(statusWriter, "Watching the clipboard for images… Press Ctrl+C to stop.")
+		err = clipboardocr.Run(ctx, events, clipboardocr.Config{
+			Format: outputFormat,
+			Rich:   *richFlag,
+			Stdout: *stdoutFlag,
+		}, func(ctx context.Context, path string) (string, error) {
+			return ocr.RecognizeEnhancedLayout(ctx, path, *smartFlag, *enhanceFlag, *layoutFlag)
+		}, clipboardAdapter, stdout, stderr)
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(statusWriter, "✓ Clipboard OCR stopped")
+		return 0
+	}
+	if *screenFlag {
+		if len(inputArgs) != 0 {
+			fmt.Fprintln(stderr, "Error: --screen does not accept a filename")
+			return 1
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		return runScreenCapture(ctx, app, clipboardAdapter, outputFormat, *chunkSize, *outputPath, *stdoutFlag, *richFlag,
+			parser.Selection{Smart: *smartFlag, Enhance: *enhanceFlag, Language: *languageFlag, Layout: *layoutFlag}, stdout, stderr)
+	}
 
 	// Handle file argument
-	if len(flagSet.Args()) == 0 {
+	if len(inputArgs) == 0 {
 		showHelp()
 		return 1
 	}
 
 	// Get the file path and optional range argument
-	filePath, rangeArg := getFilePathAndRangeFromArgs(flagSet.Args())
+	filePath, rangeArg := getFilePathAndRangeFromArgs(inputArgs)
 	if filePath == "" {
 		fmt.Fprintf(stderr, "No file specified\n")
 		showHelp()
@@ -261,6 +463,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		rangeObj = &parsedRange
+	}
+	if *searchableFlag && rangeObj != nil {
+		fmt.Fprintln(stderr, "Error: --make-searchable processes the complete PDF and does not accept a range")
+		return 1
 	}
 
 	// Create context with timeout to prevent hanging
@@ -282,7 +488,58 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "Error: file size %d bytes exceeds maximum allowed %d bytes\n", info.Size(), security.MaxInputFileSize)
 		return 1
 	}
-	v2Mode := *smartFlag || *formatFlag != "text" || *chunkSize > 0 || *outputPath != "" || *stdoutFlag || *recursiveFlag || *languageFlag != "auto" || info.IsDir()
+	if *searchableFlag {
+		if info.IsDir() {
+			fmt.Fprintln(stderr, "Error: --make-searchable requires a PDF file")
+			return 1
+		}
+		detectedType, err := detect.Type(resolvedPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		if detectedType != filetype.FileTypePDF {
+			fmt.Fprintf(stderr, "Error: --make-searchable requires a PDF file, got %s\n", detectedType)
+			return 1
+		}
+		destination := *outputPath
+		if destination == "" {
+			destination = searchableOutputPath(resolvedPath)
+		}
+		pages, err := searchablepdf.Create(ctx, app, resolvedPath, destination, parser.Selection{
+			Smart: true, Enhance: *enhanceFlag, Language: *languageFlag, Layout: *layoutFlag,
+		})
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		if pages == 0 {
+			fmt.Fprintf(stdout, "✓ PDF already had searchable text → %s\n", destination)
+		} else {
+			fmt.Fprintf(stdout, "✓ Added searchable text to %d page(s) → %s\n", pages, destination)
+		}
+		return 0
+	}
+	if *imageFlag || *pdfFlag {
+		if info.IsDir() {
+			fmt.Fprintln(stderr, "Error: --image and --pdf require a file")
+			return 1
+		}
+		detectedType, err := detect.Type(resolvedPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		if *imageFlag && detectedType != filetype.FileTypeImage {
+			fmt.Fprintf(stderr, "Error: --image requires a supported image, got %s\n", detectedType)
+			return 1
+		}
+		if *pdfFlag && detectedType != filetype.FileTypePDF {
+			fmt.Fprintf(stderr, "Error: --pdf requires a PDF file, got %s\n", detectedType)
+			return 1
+		}
+	}
+	v2Mode := *autoFlag || *smartFlag || *enhanceFlag || *imageFlag || *pdfFlag || *richFlag || *layoutFlag != "auto" || *formatFlag != "text" || *chunkSize > 0 || *outputPath != "" || *stdoutFlag || *recursiveFlag || *languageFlag != "auto" || info.IsDir()
 	if v2Mode {
 		paths := []string{resolvedPath}
 		if info.IsDir() {
@@ -292,33 +549,19 @@ func Run(args []string, stdout, stderr io.Writer) int {
 				return 1
 			}
 		}
-		selection := parser.Selection{Smart: *smartFlag, Language: *languageFlag}
+		selection := parser.Selection{Smart: *smartFlag, Enhance: *enhanceFlag, Language: *languageFlag, Layout: *layoutFlag}
 		documents, err := extractDocuments(ctx, app, paths, rangeObj, selection)
 		if err != nil {
 			fmt.Fprintf(stderr, "Error: %v\n", err)
 			return 1
 		}
-		rendered, err := clipoutput.Render(documents, outputFormat, *chunkSize)
+		if remoteSource != "" && len(documents) == 1 {
+			documents[0].Source = remoteSource
+		}
+		destination, err := deliverDocuments(documents, outputFormat, *chunkSize, *outputPath, *stdoutFlag, *richFlag, clipboardAdapter, stdout)
 		if err != nil {
 			fmt.Fprintf(stderr, "Error: %v\n", err)
 			return 1
-		}
-		destination := "clipboard"
-		switch {
-		case *outputPath != "":
-			if err := os.WriteFile(*outputPath, []byte(rendered), 0600); err != nil {
-				fmt.Fprintf(stderr, "Error: write output: %v\n", err)
-				return 1
-			}
-			destination = *outputPath
-		case *stdoutFlag:
-			fmt.Fprintln(stdout, rendered)
-			destination = "stdout"
-		default:
-			if err := clipboardAdapter.Copy(rendered); err != nil {
-				fmt.Fprintf(stderr, "Error: failed to copy to clipboard: %v\n", err)
-				return 1
-			}
 		}
 		statusWriter := stdout
 		if *stdoutFlag {
@@ -466,6 +709,10 @@ func (r *realClipboard) Copy(text string) error {
 	return clipboard.Copy(text)
 }
 
+func (r *realClipboard) CopyRich(plainText, html string) error {
+	return clipboard.CopyRich(plainText, html)
+}
+
 func showHelp() {
 	fmt.Println("Clip - Copy text from documents to your clipboard")
 	fmt.Println()
@@ -480,6 +727,21 @@ func showHelp() {
 	fmt.Println("    clip presentation.pptx 2-5")
 	fmt.Println("    clip spreadsheet.xlsx 2-10")
 	fmt.Println("    clip --smart scanned.pdf")
+	fmt.Println("    clip --image receipt.png")
+	fmt.Println("    clip --pdf --layout exact report.pdf")
+	fmt.Println("    clip --screen")
+	fmt.Println("    clip --screen --format markdown --stdout")
+	fmt.Println("    clip --rich --pdf report.pdf")
+	fmt.Println("    clip --make-searchable scanned.pdf")
+	fmt.Println("    clip --make-searchable --output archive.pdf scanned.pdf")
+	fmt.Println("    clip --watch")
+	fmt.Println("    clip --watch --smart --rich")
+	fmt.Println("    clip --clipboard")
+	fmt.Println("    clip --clipboard --smart --stdout")
+	fmt.Println("    clip --auto")
+	fmt.Println("    clip --auto --smart --format json --stdout")
+	fmt.Println("    clip --enhance difficult-scan.png")
+	fmt.Println("    clip --screen --enhance --layout exact")
 	fmt.Println("    clip --format jsonl --chunks 1200 --stdout handbook.pdf")
 	fmt.Println("    clip --recursive --output knowledge.md ./documents")
 	fmt.Println()
@@ -507,8 +769,18 @@ func showHelp() {
 	fmt.Println("  clip --ocr-status")
 	fmt.Println("  clip --completion bash|zsh|fish|powershell")
 	fmt.Println()
-	fmt.Println("V2 workflow options:")
+	fmt.Println("Advanced OCR and workflow options:")
 	fmt.Println("  --smart             Clean OCR and preserve structure as Markdown")
+	fmt.Println("  --enhance           Run adaptive multi-pass OCR for difficult scans")
+	fmt.Println("  --image             Run layout-aware OCR on an image")
+	fmt.Println("  --pdf               Preserve the spatial layout of a PDF")
+	fmt.Println("  --layout <mode>     auto, plain, or exact")
+	fmt.Println("  --screen            Select a screen region, OCR it, and copy the text")
+	fmt.Println("  --rich              Copy formatted text with a plain-text fallback")
+	fmt.Println("  --make-searchable   Preserve a PDF and add an invisible OCR text layer")
+	fmt.Println("  --watch             OCR each image copied to the clipboard until stopped")
+	fmt.Println("  --clipboard         OCR the current clipboard image once and exit")
+	fmt.Println("  --auto              Detect and process a clipboard image, path, URL, or text")
 	fmt.Println("  --format <format>   text, markdown, json, or jsonl")
 	fmt.Println("  --chunks <size>     Create AI-ready chunks")
 	fmt.Println("  --output <file>     Write to a file instead of clipboard")
@@ -533,6 +805,45 @@ func extractDocuments(ctx context.Context, app *application.Application, paths [
 		})
 	}
 	return documents, nil
+}
+
+func deliverDocuments(
+	documents []clipoutput.Document,
+	format clipoutput.Format,
+	chunkSize int,
+	outputPath string,
+	stdoutFlag, rich bool,
+	clipboardAdapter *realClipboard,
+	stdout io.Writer,
+) (string, error) {
+	rendered, err := clipoutput.Render(documents, format, chunkSize)
+	if err != nil {
+		return "", err
+	}
+	if outputPath != "" {
+		if err := os.WriteFile(outputPath, []byte(rendered), 0600); err != nil {
+			return "", fmt.Errorf("write output: %w", err)
+		}
+		return outputPath, nil
+	}
+	if stdoutFlag {
+		fmt.Fprintln(stdout, rendered)
+		return "stdout", nil
+	}
+	if rich {
+		richHTML, err := clipoutput.RenderHTML(documents)
+		if err != nil {
+			return "", err
+		}
+		if err := clipboardAdapter.CopyRich(rendered, richHTML); err != nil {
+			return "", fmt.Errorf("failed to copy rich text: %w", err)
+		}
+		return "clipboard", nil
+	}
+	if err := clipboardAdapter.Copy(rendered); err != nil {
+		return "", fmt.Errorf("failed to copy to clipboard: %w", err)
+	}
+	return "clipboard", nil
 }
 
 func batchFiles(root string, recursive bool) ([]string, error) {
@@ -589,7 +900,7 @@ func validateOCRLanguage(language string) error {
 }
 
 func completionScript(shell string) (string, error) {
-	flags := "--help --version --list --inspect --ocr-status --smart --format --chunks --output --stdout --recursive --lang --completion"
+	flags := "--help --version --list --inspect --ocr-status --smart --enhance --image --pdf --screen --rich --make-searchable --watch --clipboard --auto --layout --format --chunks --output --stdout --recursive --lang --completion"
 	switch strings.ToLower(shell) {
 	case "bash":
 		return "_clip() { COMPREPLY=( $(compgen -W '" + flags + "' -- \"${COMP_WORDS[COMP_CWORD]}\") ); }\ncomplete -F _clip clip\n", nil
@@ -606,6 +917,88 @@ func completionScript(shell string) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported shell %q", shell)
 	}
+}
+
+func runScreenCapture(
+	ctx context.Context,
+	app *application.Application,
+	clipboardAdapter *realClipboard,
+	outputFormat clipoutput.Format,
+	chunkSize int,
+	outputPath string,
+	stdoutFlag bool,
+	rich bool,
+	selection parser.Selection,
+	stdout, stderr io.Writer,
+) int {
+	statusWriter := stdout
+	if stdoutFlag {
+		statusWriter = stderr
+	}
+	fmt.Fprintln(statusWriter, "Select an area of the screen…")
+	capture, err := captureScreen(ctx)
+	if err != nil {
+		if errors.Is(err, screencapture.ErrCancelled) {
+			fmt.Fprintln(stderr, "Screen capture cancelled")
+			return 1
+		}
+		fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+	defer os.Remove(capture.Path)
+
+	result, err := app.ExtractText(ctx, capture.Path, nil, selection)
+	if err != nil {
+		fmt.Fprintf(stderr, "Error: screen OCR failed: %v\n", err)
+		return 1
+	}
+	rendered, err := clipoutput.Render([]clipoutput.Document{{
+		Source: "screen.png",
+		Type:   "png",
+		Text:   result.Text,
+	}}, outputFormat, chunkSize)
+	if err != nil {
+		fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+
+	destination := "clipboard"
+	switch {
+	case outputPath != "":
+		if err := os.WriteFile(outputPath, []byte(rendered), 0600); err != nil {
+			fmt.Fprintf(stderr, "Error: write output: %v\n", err)
+			return 1
+		}
+		destination = outputPath
+	case stdoutFlag:
+		fmt.Fprintln(stdout, rendered)
+		destination = "stdout"
+	default:
+		if rich {
+			richHTML, err := clipoutput.RenderHTML([]clipoutput.Document{{Source: "screen.png", Type: "png", Text: result.Text}})
+			if err != nil {
+				fmt.Fprintf(stderr, "Error: %v\n", err)
+				return 1
+			}
+			if err := clipboardAdapter.CopyRich(rendered, richHTML); err != nil {
+				fmt.Fprintf(stderr, "Error: failed to copy rich text: %v\n", err)
+				return 1
+			}
+		} else if err := clipboardAdapter.Copy(rendered); err != nil {
+			fmt.Fprintf(stderr, "Error: failed to copy to clipboard: %v\n", err)
+			return 1
+		}
+	}
+
+	fmt.Fprintf(statusWriter, "✓ Captured %d × %d\n", capture.Width, capture.Height)
+	fmt.Fprintf(statusWriter, "✓ Recognized %d words\n", len(strings.Fields(result.Text)))
+	fmt.Fprintf(statusWriter, "✓ Sent to %s\n", destination)
+	return 0
+}
+
+func searchableOutputPath(inputPath string) string {
+	extension := filepath.Ext(inputPath)
+	return strings.TrimSuffix(inputPath, extension) + ".searchable.pdf"
 }
 
 // getFilePathAndRangeFromArgs extracts the file path and optional range argument from parsed flag arguments.

@@ -13,6 +13,7 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/upendra7470/clip/internal/filetype"
+	clipLayout "github.com/upendra7470/clip/internal/layout"
 	"github.com/upendra7470/clip/internal/parser"
 	"github.com/upendra7470/clip/parsers/ocr"
 )
@@ -85,8 +86,13 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 		return p.ocrPages(ctx, req.File, 1, -1, req.Selection)
 	}
 
-	// Extract text from all pages
-	var text strings.Builder
+	mode, err := clipLayout.ParseMode(req.Selection.Layout)
+	if err != nil {
+		return parser.ParseResult{}, err
+	}
+	// Extract each page independently so mixed PDFs can use native text on
+	// digital pages and OCR only on scanned pages.
+	var pages []string
 	numPages := pdfReader.NumPage()
 
 	for i := 1; i <= numPages; i++ {
@@ -95,24 +101,25 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 			continue
 		}
 
-		pageText := page.Content().Text
-		if len(pageText) > 0 {
-			if text.Len() > 0 {
-				text.WriteByte('\n')
+		pageText := renderPage(page.Content().Text, mode)
+		if pageText == "" {
+			ocrResult, ocrErr := p.ocrPages(ctx, req.File, i, i, req.Selection)
+			if ocrErr != nil {
+				continue
 			}
-			// Convert []pdf.Text to string
-			for _, t := range pageText {
-				text.WriteString(t.S)
-			}
+			pageText = ocrResult.Text
+		}
+		if pageText != "" {
+			pages = append(pages, pageText)
 		}
 	}
 
-	if text.Len() == 0 {
+	if len(pages) == 0 {
 		return p.ocrPages(ctx, req.File, 1, numPages, req.Selection)
 	}
 
 	return parser.ParseResult{
-		Text: text.String(),
+		Text: strings.Join(pages, "\n\n"),
 	}, nil
 }
 
@@ -163,33 +170,59 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested page range exceeds document page count (document has %d pages, requested %d-%d)", numPages, start, end), nil)
 	}
 
-	// Extract text from the specified page range
-	var text strings.Builder
+	mode, err := clipLayout.ParseMode(req.Selection.Layout)
+	if err != nil {
+		return parser.ParseResult{}, err
+	}
+	// Extract text from the specified page range, OCRing scanned pages in
+	// place instead of flattening the entire range.
+	var pages []string
 	for i := start; i <= end; i++ {
 		page := pdfReader.Page(i)
 		if page.V.IsNull() {
 			continue
 		}
 
-		pageText := page.Content().Text
-		if len(pageText) > 0 {
-			if text.Len() > 0 {
-				text.WriteByte('\n')
+		pageText := renderPage(page.Content().Text, mode)
+		if pageText == "" {
+			ocrResult, ocrErr := p.ocrPages(ctx, req.File, i, i, req.Selection)
+			if ocrErr != nil {
+				continue
 			}
-			// Convert []pdf.Text to string
-			for _, t := range pageText {
-				text.WriteString(t.S)
-			}
+			pageText = ocrResult.Text
+		}
+		if pageText != "" {
+			pages = append(pages, pageText)
 		}
 	}
 
-	if text.Len() == 0 {
+	if len(pages) == 0 {
 		return p.ocrPages(ctx, req.File, start, end, req.Selection)
 	}
 
 	return parser.ParseResult{
-		Text: text.String(),
+		Text: strings.Join(pages, "\n\n"),
 	}, nil
+}
+
+func renderPage(fragments []pdf.Text, mode clipLayout.Mode) string {
+	tokens := make([]clipLayout.Token, 0, len(fragments))
+	for _, fragment := range fragments {
+		height := fragment.FontSize
+		if height <= 0 {
+			height = 1
+		}
+		tokens = append(tokens, clipLayout.Token{
+			Text: fragment.S,
+			X:    fragment.X,
+			// PDF coordinates increase bottom-to-top and Y is a baseline.
+			// Centering around the negated baseline groups mixed font sizes.
+			Y:      -fragment.Y - height/2,
+			Width:  fragment.W,
+			Height: height,
+		})
+	}
+	return clipLayout.Render(tokens, mode)
 }
 
 func (p *Parser) ocrPages(ctx context.Context, path string, start, end int, selection parser.Selection) (parser.ParseResult, error) {
@@ -205,7 +238,7 @@ func (p *Parser) ocrPages(ctx context.Context, path string, start, end int, sele
 	} else {
 		selectedPages[0] = fmt.Sprintf("%d-", start)
 	}
-	conf := model.NewDefaultConfiguration()
+	conf := model.NewStatelessConfiguration()
 	if err := api.ExtractImagesFile(ctx, path, tempDir, selectedPages, conf); err != nil {
 		return parser.ParseResult{}, wrapError("failed to extract scanned PDF images for OCR", err)
 	}
@@ -227,7 +260,7 @@ func (p *Parser) ocrPages(ctx context.Context, path string, start, end int, sele
 
 	var result strings.Builder
 	for index, imagePath := range images {
-		text, err := ocr.RecognizeSmart(ctx, imagePath, selection.Smart)
+		text, err := ocr.RecognizeEnhancedLayout(ctx, imagePath, selection.Smart, selection.Enhance, selection.Layout)
 		if err != nil {
 			return parser.ParseResult{}, wrapError(fmt.Sprintf("failed to OCR extracted PDF image %d", index+1), err)
 		}

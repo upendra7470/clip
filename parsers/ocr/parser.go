@@ -3,6 +3,7 @@ package ocr
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
@@ -22,6 +23,7 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"github.com/upendra7470/clip/internal/filetype"
+	clipLayout "github.com/upendra7470/clip/internal/layout"
 	"github.com/upendra7470/clip/internal/ocrbundle"
 	"github.com/upendra7470/clip/internal/parser"
 	"github.com/upendra7470/clip/internal/security"
@@ -31,20 +33,47 @@ type Runner interface {
 	Recognize(ctx context.Context, file string) (string, error)
 }
 
+type layoutRunner interface {
+	RecognizeLayout(ctx context.Context, file string, mode clipLayout.Mode) (string, error)
+}
+
 type bundledRunner struct{}
 
 func (bundledRunner) Recognize(ctx context.Context, file string) (string, error) {
+	return runBundled(ctx, file, false)
+}
+
+func (bundledRunner) RecognizeLayout(ctx context.Context, file string, mode clipLayout.Mode) (string, error) {
+	if mode == clipLayout.Plain {
+		return runBundled(ctx, file, false)
+	}
+	output, err := runBundled(ctx, file, true)
+	if err != nil {
+		return "", err
+	}
+	tokens, err := decodeLayout([]byte(output))
+	if err != nil {
+		return "", fmt.Errorf("decode built-in OCR layout: %w", err)
+	}
+	return clipLayout.Render(tokens, mode), nil
+}
+
+func runBundled(ctx context.Context, file string, structured bool) (string, error) {
 	paths, err := ocrbundle.Resolve()
 	if err != nil {
 		return "", err
 	}
 
-	// #nosec G204 -- the executable is the embedded, integrity-checked OCR engine; arguments are passed without a shell.
-	cmd := exec.CommandContext(ctx, paths.Engine,
+	args := []string{
 		"--detect-model", paths.DetectionModel,
 		"--rec-model", paths.RecognitionModel,
-		file,
-	)
+	}
+	if structured {
+		args = append(args, "--json")
+	}
+	args = append(args, file)
+	// #nosec G204 -- the executable is the embedded, integrity-checked OCR engine; arguments are passed without a shell.
+	cmd := exec.CommandContext(ctx, paths.Engine, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	output, err := cmd.Output()
@@ -56,6 +85,69 @@ func (bundledRunner) Recognize(ctx context.Context, file string) (string, error)
 		return "", fmt.Errorf("built-in OCR failed: %s", detail)
 	}
 	return string(output), nil
+}
+
+type ocrJSON struct {
+	Paragraphs []struct {
+		Lines []struct {
+			Text     string       `json:"text"`
+			Vertices [][2]float64 `json:"vertices"`
+			Words    []struct {
+				Text     string       `json:"text"`
+				Vertices [][2]float64 `json:"vertices"`
+			} `json:"words"`
+		} `json:"lines"`
+	} `json:"paragraphs"`
+}
+
+func decodeLayout(data []byte) ([]clipLayout.Token, error) {
+	var document ocrJSON
+	if err := json.Unmarshal(data, &document); err != nil {
+		return nil, err
+	}
+	var tokens []clipLayout.Token
+	for _, paragraph := range document.Paragraphs {
+		for _, line := range paragraph.Lines {
+			if len(line.Words) == 0 {
+				if token, ok := positionedToken(line.Text, line.Vertices); ok {
+					tokens = append(tokens, token)
+				}
+				continue
+			}
+			for _, word := range line.Words {
+				if token, ok := positionedToken(word.Text, word.Vertices); ok {
+					tokens = append(tokens, token)
+				}
+			}
+		}
+	}
+	if len(tokens) == 0 {
+		return nil, fmt.Errorf("OCR found no positioned text")
+	}
+	return tokens, nil
+}
+
+func positionedToken(text string, vertices [][2]float64) (clipLayout.Token, bool) {
+	if strings.TrimSpace(text) == "" || len(vertices) == 0 {
+		return clipLayout.Token{}, false
+	}
+	minX, maxX := vertices[0][0], vertices[0][0]
+	minY, maxY := vertices[0][1], vertices[0][1]
+	for _, vertex := range vertices[1:] {
+		if vertex[0] < minX {
+			minX = vertex[0]
+		}
+		if vertex[0] > maxX {
+			maxX = vertex[0]
+		}
+		if vertex[1] < minY {
+			minY = vertex[1]
+		}
+		if vertex[1] > maxY {
+			maxY = vertex[1]
+		}
+	}
+	return clipLayout.Token{Text: text, X: minX, Y: minY, Width: maxX - minX, Height: maxY - minY}, true
 }
 
 type Parser struct {
@@ -84,6 +176,31 @@ func Recognize(ctx context.Context, file string) (string, error) {
 // RecognizeSmart performs OCR with optional contrast normalization and
 // high-quality upscaling for small scans.
 func RecognizeSmart(ctx context.Context, file string, smart bool) (string, error) {
+	return RecognizeSmartLayout(ctx, file, smart, "auto")
+}
+
+// RecognizeSmartLayout performs OCR and reconstructs text using word geometry.
+func RecognizeSmartLayout(ctx context.Context, file string, smart bool, layoutValue string) (string, error) {
+	return RecognizeEnhancedLayout(ctx, file, smart, false, layoutValue)
+}
+
+// RecognizeEnhancedLayout performs optional multi-pass preprocessing and OCR
+// result selection in addition to smart layout reconstruction.
+func RecognizeEnhancedLayout(ctx context.Context, file string, smart, enhance bool, layoutValue string) (string, error) {
+	if enhance {
+		variants, cleanup, err := prepareEnhancedVariants(file)
+		if err != nil {
+			return "", err
+		}
+		defer cleanup()
+		ocrCtx, cancel := context.WithTimeout(ctx, security.MaxOCRDuration)
+		defer cancel()
+		mode, err := clipLayout.ParseMode(layoutValue)
+		if err != nil {
+			return "", err
+		}
+		return recognizeEnhanced(ocrCtx, bundledRunner{}, variants, mode)
+	}
 	prepared, cleanup, err := prepareImage(file, smart)
 	if err != nil {
 		return "", err
@@ -91,27 +208,43 @@ func RecognizeSmart(ctx context.Context, file string, smart bool) (string, error
 	defer cleanup()
 	ocrCtx, cancel := context.WithTimeout(ctx, security.MaxOCRDuration)
 	defer cancel()
-	if smart {
-		return recognizeBestOrientation(ocrCtx, bundledRunner{}, prepared)
+	mode, err := clipLayout.ParseMode(layoutValue)
+	if err != nil {
+		return "", err
 	}
-	return bundledRunner{}.Recognize(ocrCtx, prepared)
+	if smart {
+		return recognizeBestOrientationLayout(ocrCtx, bundledRunner{}, prepared, mode)
+	}
+	return recognizeWithLayout(ocrCtx, bundledRunner{}, prepared, mode)
 }
 
 func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
-	prepared, cleanup, err := prepareImage(req.File, req.Selection.Smart)
+	ocrCtx, cancel := context.WithTimeout(ctx, security.MaxOCRDuration)
+	defer cancel()
+	mode, err := clipLayout.ParseMode(req.Selection.Layout)
 	if err != nil {
 		return parser.ParseResult{}, err
 	}
-	defer cleanup()
-
-	ocrCtx, cancel := context.WithTimeout(ctx, security.MaxOCRDuration)
-	defer cancel()
 
 	var text string
-	if req.Selection.Smart {
-		text, err = recognizeBestOrientation(ocrCtx, p.runner, prepared)
+	if req.Selection.Enhance {
+		variants, cleanup, prepareErr := prepareEnhancedVariants(req.File)
+		if prepareErr != nil {
+			return parser.ParseResult{}, prepareErr
+		}
+		defer cleanup()
+		text, err = recognizeEnhanced(ocrCtx, p.runner, variants, mode)
 	} else {
-		text, err = p.runner.Recognize(ocrCtx, prepared)
+		prepared, cleanup, prepareErr := prepareImage(req.File, req.Selection.Smart)
+		if prepareErr != nil {
+			return parser.ParseResult{}, prepareErr
+		}
+		defer cleanup()
+		if req.Selection.Smart {
+			text, err = recognizeBestOrientationLayout(ocrCtx, p.runner, prepared, mode)
+		} else {
+			text, err = recognizeWithLayout(ocrCtx, p.runner, prepared, mode)
+		}
 	}
 	if err != nil {
 		return parser.ParseResult{}, err
@@ -123,8 +256,15 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 	return parser.ParseResult{Text: text}, nil
 }
 
-func recognizeBestOrientation(ctx context.Context, runner Runner, path string) (string, error) {
-	bestText, err := runner.Recognize(ctx, path)
+func recognizeWithLayout(ctx context.Context, runner Runner, path string, mode clipLayout.Mode) (string, error) {
+	if structured, ok := runner.(layoutRunner); ok {
+		return structured.RecognizeLayout(ctx, path, mode)
+	}
+	return runner.Recognize(ctx, path)
+}
+
+func recognizeBestOrientationLayout(ctx context.Context, runner Runner, path string, mode clipLayout.Mode) (string, error) {
+	bestText, err := recognizeWithLayout(ctx, runner, path, mode)
 	if err != nil {
 		return "", err
 	}
@@ -134,7 +274,7 @@ func recognizeBestOrientation(ctx context.Context, runner Runner, path string) (
 		if err != nil {
 			return "", err
 		}
-		candidate, recognizeErr := runner.Recognize(ctx, rotated)
+		candidate, recognizeErr := recognizeWithLayout(ctx, runner, rotated, mode)
 		cleanup()
 		if recognizeErr != nil {
 			if ctx.Err() != nil {

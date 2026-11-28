@@ -2,6 +2,7 @@ package clipboard
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -15,6 +16,22 @@ func TestCopyUnsupportedPlatform(t *testing.T) {
 	}
 	if err.Error() != "unsupported platform" {
 		t.Errorf("Expected 'unsupported platform' error, got: %v", err)
+	}
+}
+
+func TestCFHTMLByteOffsets(t *testing.T) {
+	fragment := "<b>café</b>"
+	payload := cfHTML(fragment)
+	var startHTML, endHTML, startFragment, endFragment int
+	if _, err := fmt.Sscanf(string(payload), "Version:0.9\r\nStartHTML:%d\r\nEndHTML:%d\r\nStartFragment:%d\r\nEndFragment:%d\r\n",
+		&startHTML, &endHTML, &startFragment, &endFragment); err != nil {
+		t.Fatalf("parse CF_HTML header: %v", err)
+	}
+	if startHTML < 0 || endHTML != len(payload) || startFragment < startHTML || endFragment > endHTML {
+		t.Fatalf("invalid CF_HTML offsets: %d %d %d %d (length %d)", startHTML, endHTML, startFragment, endFragment, len(payload))
+	}
+	if got := string(payload[startFragment:endFragment]); got != fragment {
+		t.Fatalf("CF_HTML fragment = %q, want %q", got, fragment)
 	}
 }
 
