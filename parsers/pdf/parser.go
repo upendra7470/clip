@@ -238,7 +238,7 @@ func (p *Parser) ocrPages(ctx context.Context, path string, start, end int, sele
 	} else {
 		selectedPages[0] = fmt.Sprintf("%d-", start)
 	}
-	conf := model.NewDefaultConfiguration()
+	conf := model.NewStatelessConfiguration()
 	if err := api.ExtractImagesFile(ctx, path, tempDir, selectedPages, conf); err != nil {
 		return parser.ParseResult{}, wrapError("failed to extract scanned PDF images for OCR", err)
 	}

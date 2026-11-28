@@ -9,9 +9,11 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/upendra7470/clip/internal/application"
+	"github.com/upendra7470/clip/internal/clipboard"
 	clipoutput "github.com/upendra7470/clip/internal/output"
 	"github.com/upendra7470/clip/internal/parser"
 	"github.com/upendra7470/clip/internal/registry"
@@ -85,6 +87,37 @@ func TestStructuredJSONOutput(t *testing.T) {
 	}
 }
 
+func TestRichClipboardPublishesHTMLAndPlainText(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "notes.md")
+	if err := os.WriteFile(path, []byte("# Hello\n\nRich **copy**"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	testClipboard := clipboard.NewTestClipboard()
+	clipboard.SetTestClipboard(testClipboard)
+	t.Cleanup(func() { clipboard.SetTestClipboard(nil) })
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--rich", "--format", "markdown", path}, &stdout, &stderr); code != 0 {
+		t.Fatalf("Run() code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(testClipboard.GetCopiedText(), "Rich copy") {
+		t.Fatalf("plain clipboard = %q", testClipboard.GetCopiedText())
+	}
+	if !strings.Contains(testClipboard.GetCopiedHTML(), "<p>Rich copy</p>") {
+		t.Fatalf("HTML clipboard = %q", testClipboard.GetCopiedHTML())
+	}
+}
+
+func TestRichClipboardRejectsFileDestination(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--rich", "--output", "out.html", "notes.md"}, &stdout, &stderr); code == 0 {
+		t.Fatal("Run() accepted --rich with --output")
+	}
+	if !strings.Contains(stderr.String(), "--rich writes to the clipboard") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
 func TestBatchFilesRespectsRecursiveFlag(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "top.txt"), []byte("top"), 0600); err != nil {
@@ -127,6 +160,9 @@ func TestCompletionScript(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(script), []byte("--screen")) {
 		t.Fatalf("completion missing screen OCR: %s", script)
+	}
+	if !bytes.Contains([]byte(script), []byte("--rich")) || !bytes.Contains([]byte(script), []byte("--make-searchable")) {
+		t.Fatalf("completion missing v2.3 options: %s", script)
 	}
 }
 
@@ -207,7 +243,7 @@ func TestRunScreenCaptureExtractsAndDeletesTemporaryImage(t *testing.T) {
 	}
 	app := application.New(reg, &realClipboard{})
 	var stdout, stderr bytes.Buffer
-	code := runScreenCapture(context.Background(), app, &realClipboard{}, clipoutput.Text, 0, "", true,
+	code := runScreenCapture(context.Background(), app, &realClipboard{}, clipoutput.Text, 0, "", true, false,
 		parser.Selection{Layout: "plain"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("runScreenCapture() = %d, stderr = %q", code, stderr.String())

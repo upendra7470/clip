@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Rich clipboard output with `--rich`, including safe HTML, plain-text fallback, and Windows CF_HTML compatibility
+- Searchable scanned-PDF export with `--make-searchable` and optional `--output`
+- Page-aware OCR layering that skips PDF pages which already contain native searchable text
 - Instant offline screen-region OCR with `clip --screen`
 - Native selection through macOS Screen Capture, the Wayland desktop portal, Windows Forms, and a compiled-in X11 selector
 - Screen OCR support for Markdown, JSON, JSONL, chunks, stdout, and file output
@@ -35,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
+- PDF processing now uses a stateless embedded configuration and never needs to create external pdfcpu settings
+- Searchable-PDF output uses private temporary files, atomic publication, and refuses accidental overwrites
 - Private screen captures are stored with restricted permissions and deleted immediately after OCR
 - PDF extraction now uses fragment coordinates, widths, and font sizes to preserve words, lines, paragraphs, and columns
 - OCR output retains detected lines, paragraph spacing, and table-sized gaps instead of flattening text

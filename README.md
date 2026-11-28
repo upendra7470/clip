@@ -61,6 +61,8 @@ clip --image receipt.png       # explicit layout-aware image OCR
 clip --pdf report.pdf          # explicit layout-preserving PDF extraction
 clip --pdf --layout exact report.pdf # spatial plain-text layout
 clip --screen                  # select visible text anywhere on screen
+clip --rich --pdf report.pdf   # paste formatted headings and tables
+clip --make-searchable scan.pdf # create scan.searchable.pdf with an OCR layer
 clip notes.txt 30-50           # only these lines
 clip --list workbook.xlsx      # inspect available units
 clip --ocr-status              # verify the bundled OCR engine
@@ -81,6 +83,8 @@ clip --completion zsh > ~/.zfunc/_clip
 - `--smart` normalizes contrast, upscales small scans, and produces clean Markdown.
 - `--image` and `--pdf` provide memorable explicit OCR/PDF workflows while the original automatic file detection remains supported.
 - `--screen` opens the operating system's region selector, runs offline OCR, copies the result, and deletes its private temporary screenshot.
+- `--rich` places safe HTML and plain text on the clipboard together. Apps such as Word, Google Docs, Pages, Outlook, and rich-text editors can preserve headings, lists, emphasis, and tables; plain-text apps still paste normally.
+- `--make-searchable scanned.pdf` creates `scanned.searchable.pdf`, preserving every original page while adding an invisible OCR text layer to scan-only pages. Use `--output result.pdf` to choose the destination. Existing files are never overwritten.
 - `--layout auto|plain|exact` controls spatial reconstruction. `auto` preserves paragraphs and columns, while `exact` approximates source positioning with spaces.
 - `--format text|markdown|json|jsonl` selects structured output.
 - `--chunks N` creates Unicode-safe chunks for RAG and AI pipelines.
@@ -104,6 +108,8 @@ When only a filename is supplied, Clip can find it in the current directory, Dow
 - **Scanned PDF intelligence**—native text and OCR are combined page by page for mixed PDFs
 - **Layout-aware copying**—paragraphs, rows, columns, and page boundaries survive extraction
 - **Instant screen OCR**—select visible text from videos, remote desktops, images, and applications that prevent normal copying
+- **Rich universal paste**—one copy supplies formatted HTML and a reliable plain-text fallback
+- **Searchable scanned PDFs**—retain the original pages while enabling search, selection, and indexing
 - **Precise ranges**—copy only the pages, slides, rows, lines, or sections you want
 - **Fast on large files**—streaming and targeted extraction avoid unnecessary work
 - **Defensive parsing**—bounded reads, archive limits, image limits, and OCR timeouts

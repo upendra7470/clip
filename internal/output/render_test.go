@@ -41,6 +41,25 @@ func TestCSVMarkdownTable(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLPreservesStructureAndOmitsRawHTML(t *testing.T) {
+	rendered, err := RenderHTML([]Document{{
+		Source: "report.md",
+		Type:   "md",
+		Text:   "# Results\n\nName\tScore\nAda\t10\n\n<script>alert('x')</script>",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"<h1>Results</h1>", "<table>", "<td>Ada</td>"} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("RenderHTML() missing %q in %q", expected, rendered)
+		}
+	}
+	if strings.Contains(rendered, "<script>") {
+		t.Fatalf("RenderHTML() preserved unsafe raw HTML: %q", rendered)
+	}
+}
+
 func TestChunkTextDoesNotSplitUnicode(t *testing.T) {
 	chunks := chunkText("नमस्ते दुनिया", 5)
 	if len(chunks) < 2 {

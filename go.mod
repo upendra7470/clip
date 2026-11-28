@@ -10,6 +10,7 @@ require (
 	github.com/richardlehane/mscfb v1.0.9
 	github.com/stretchr/testify v1.12.1
 	github.com/xuri/excelize/v2 v2.11.1
+	github.com/yuin/goldmark v1.8.7
 	golang.design/x/clipboard v0.11.0
 	golang.org/x/image v0.47.0
 	gopkg.in/yaml.v3 v3.0.1
