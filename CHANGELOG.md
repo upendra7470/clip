@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Rich clipboard output with `--rich`, including safe HTML, plain-text fallback, and Windows CF_HTML compatibility
+- Searchable scanned-PDF export with `--make-searchable` and optional `--output`
+- Page-aware OCR layering that skips PDF pages which already contain native searchable text
+- Instant offline screen-region OCR with `clip --screen`
+- Native selection through macOS Screen Capture, the Wayland desktop portal, Windows Forms, and a compiled-in X11 selector
+- Screen OCR support for Markdown, JSON, JSONL, chunks, stdout, and file output
+- Explicit `clip --image` and `clip --pdf` workflows with automatic type validation
+- `--layout auto|plain|exact` output modes for spatial text reconstruction
+- Coordinate-aware OCR using the bundled engine's word geometry
+- Page-by-page native text and OCR extraction for mixed digital/scanned PDFs
 - Clip 2.0 smart workflow with `--smart` OCR cleanup and Markdown output
 - Structured `text`, `markdown`, `json`, and `jsonl` rendering
 - Unicode-safe `--chunks` output for AI and RAG pipelines
@@ -28,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
+- PDF processing now uses a stateless embedded configuration and never needs to create external pdfcpu settings
+- Searchable-PDF output uses private temporary files, atomic publication, and refuses accidental overwrites
+- Private screen captures are stored with restricted permissions and deleted immediately after OCR
+- PDF extraction now uses fragment coordinates, widths, and font sizes to preserve words, lines, paragraphs, and columns
+- OCR output retains detected lines, paragraph spacing, and table-sized gaps instead of flattening text
 - PPTX range extraction inflates only requested slides and uses numeric slide ordering
 - TXT, CSV, and XLSX range extraction streams requested content
 - PDF text assembly uses amortized linear string building

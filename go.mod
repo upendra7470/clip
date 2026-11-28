@@ -3,11 +3,14 @@ module github.com/upendra7470/clip
 go 1.26.11
 
 require (
+	github.com/godbus/dbus/v5 v5.2.2
+	github.com/jezek/xgb v1.3.0
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/pdfcpu/pdfcpu v0.16.4
 	github.com/richardlehane/mscfb v1.0.9
 	github.com/stretchr/testify v1.12.1
 	github.com/xuri/excelize/v2 v2.11.1
+	github.com/yuin/goldmark v1.8.7
 	golang.design/x/clipboard v0.11.0
 	golang.org/x/image v0.47.0
 	gopkg.in/yaml.v3 v3.0.1

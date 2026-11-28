@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 )
 
 type Format string
@@ -69,6 +73,33 @@ func Render(documents []Document, format Format, chunkSize int) (string, error) 
 	default:
 		return "", fmt.Errorf("unsupported output format %q", format)
 	}
+}
+
+// RenderHTML converts the structure-preserving Markdown representation to a
+// safe HTML fragment suitable for a rich clipboard. Goldmark's safe defaults
+// omit raw HTML from extracted documents.
+func RenderHTML(documents []Document) (string, error) {
+	if len(documents) == 0 {
+		return "", fmt.Errorf("no documents to render")
+	}
+	markdown := goldmark.New(goldmark.WithExtensions(extension.GFM))
+	var result strings.Builder
+	result.WriteString(`<div class="clip-content"><style>.clip-content{font-family:system-ui,-apple-system,sans-serif;line-height:1.45;color:#1f2328}.clip-content table{border-collapse:collapse}.clip-content th,.clip-content td{border:1px solid #d0d7de;padding:6px 10px;text-align:left}.clip-content h1,.clip-content h2,.clip-content h3{line-height:1.25}</style>`)
+	for index, document := range documents {
+		if index > 0 {
+			result.WriteString("<hr>")
+		}
+		if len(documents) > 1 {
+			fmt.Fprintf(&result, "<h1>%s</h1>", html.EscapeString(filepath.Base(document.Source)))
+		}
+		var body bytes.Buffer
+		if err := markdown.Convert([]byte(markdownDocument(document)), &body); err != nil {
+			return "", fmt.Errorf("render HTML: %w", err)
+		}
+		result.Write(body.Bytes())
+	}
+	result.WriteString("</div>")
+	return result.String(), nil
 }
 
 func renderText(documents []Document, chunks []Chunk) string {
