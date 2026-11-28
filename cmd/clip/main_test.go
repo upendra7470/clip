@@ -110,3 +110,31 @@ func TestCompletionScript(t *testing.T) {
 		t.Fatalf("completion missing v2 options: %s", script)
 	}
 }
+
+func TestExplicitPDFRejectsNonPDF(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(path, []byte("hello"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--pdf", path}, &stdout, &stderr); code == 0 {
+		t.Fatalf("Run() accepted text as PDF")
+	}
+	if !bytes.Contains(stderr.Bytes(), []byte("--pdf requires a PDF")) {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestRejectsConflictingExplicitModes(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--image", "--pdf", "anything.pdf"}, &stdout, &stderr); code == 0 {
+		t.Fatal("Run() accepted conflicting modes")
+	}
+}
+
+func TestRejectsInvalidLayout(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--layout", "visual", "anything.pdf"}, &stdout, &stderr); code == 0 {
+		t.Fatal("Run() accepted invalid layout")
+	}
+}

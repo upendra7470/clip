@@ -57,14 +57,17 @@ clip "Q4 Review.pptx" 2-       # slide 2 to the end
 clip customers.xlsx -20        # first 20 rows
 clip receipt.png               # built-in offline OCR
 clip scanned-document.pdf      # OCR fallback happens automatically
+clip --image receipt.png       # explicit layout-aware image OCR
+clip --pdf report.pdf          # explicit layout-preserving PDF extraction
+clip --pdf --layout exact report.pdf # spatial plain-text layout
 clip notes.txt 30-50           # only these lines
 clip --list workbook.xlsx      # inspect available units
 clip --ocr-status              # verify the bundled OCR engine
 ```
 
-## Preview: Clip 2.0 smart workflows
+## Clip 2.x smart and layout-aware workflows
 
-The v2 branch adds structure-aware output, batch extraction, OCR cleanup, and AI-ready chunks while keeping the original command compatible.
+Clip 2.x adds structure-aware output, batch extraction, OCR cleanup, layout reconstruction, and AI-ready chunks while keeping the original command compatible.
 
 ```sh
 clip --smart scan.png
@@ -75,6 +78,8 @@ clip --completion zsh > ~/.zfunc/_clip
 ```
 
 - `--smart` normalizes contrast, upscales small scans, and produces clean Markdown.
+- `--image` and `--pdf` provide memorable explicit OCR/PDF workflows while the original automatic file detection remains supported.
+- `--layout auto|plain|exact` controls spatial reconstruction. `auto` preserves paragraphs and columns, while `exact` approximates source positioning with spaces.
 - `--format text|markdown|json|jsonl` selects structured output.
 - `--chunks N` creates Unicode-safe chunks for RAG and AI pipelines.
 - Directories can be processed in deterministic order, with a 1,000-file safety limit.
@@ -94,7 +99,8 @@ When only a filename is supplied, Clip can find it in the current directory, Dow
 - **Private by design**—all extraction and OCR happens on your computer
 - **Truly portable**—a native binary for Windows, macOS, and Linux
 - **Built-in OCR**—the engine and verified models ship inside the executable
-- **Scanned PDF intelligence**—embedded text first, OCR automatically when needed
+- **Scanned PDF intelligence**—native text and OCR are combined page by page for mixed PDFs
+- **Layout-aware copying**—paragraphs, rows, columns, and page boundaries survive extraction
 - **Precise ranges**—copy only the pages, slides, rows, lines, or sections you want
 - **Fast on large files**—streaming and targeted extraction avoid unnecessary work
 - **Defensive parsing**—bounded reads, archive limits, image limits, and OCR timeouts
@@ -113,7 +119,7 @@ When only a filename is supplied, Clip can find it in the current directory, Dow
 | JSON / XML / HTML / YAML | `.json`, `.xml`, `.html`, `.yaml`, `.yml` | entries / blocks / values |
 | Images | `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tif`, `.tiff`, `.webp` | offline OCR |
 
-The current OCR model recognizes printed Latin-alphabet text. OCR quality depends on image resolution, contrast, orientation, and layout.
+The current OCR model recognizes printed Latin-alphabet text. OCR quality depends on image resolution, contrast, orientation, and layout. Clip preserves logical text layout; plain-text clipboards cannot reproduce fonts, colors, images, or pixel-perfect document styling.
 
 ## How the self-contained build works
 
