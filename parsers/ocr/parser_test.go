@@ -77,6 +77,30 @@ func TestOCRRejectsInvalidImage(t *testing.T) {
 	}
 }
 
+func TestDecodeLayoutUsesOCRWordCoordinates(t *testing.T) {
+	data := []byte(`{
+		"paragraphs": [{"lines": [
+			{"text":"Name Value","vertices":[[0,0],[100,0],[100,10],[0,10]],"words":[
+				{"text":"Name","vertices":[[0,0],[20,0],[20,10],[0,10]]},
+				{"text":"Value","vertices":[[80,0],[100,0],[100,10],[80,10]]}
+			]}
+		]}]
+	}`)
+	tokens, err := decodeLayout(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tokens) != 2 || tokens[1].Text != "Value" || tokens[1].X != 80 || tokens[1].Width != 20 {
+		t.Fatalf("unexpected tokens: %#v", tokens)
+	}
+}
+
+func TestDecodeLayoutRejectsEmptyOCR(t *testing.T) {
+	if _, err := decodeLayout([]byte(`{"paragraphs":[]}`)); err == nil {
+		t.Fatal("expected empty OCR error")
+	}
+}
+
 func testImage(t *testing.T, width, height int) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "scan.png")
