@@ -42,6 +42,14 @@ type ImageEvent struct {
 	Sensitive bool
 }
 
+// Snapshot is the current clipboard payload. Image takes precedence when the
+// clipboard publishes both image and text representations.
+type Snapshot struct {
+	Image     []byte
+	Text      string
+	Sensitive bool
+}
+
 // WatchImages streams PNG-normalized clipboard images until ctx is canceled.
 func WatchImages(ctx context.Context) (<-chan ImageEvent, error) {
 	nativeInit.Do(func() { nativeInitErr = nativeclipboard.Init() })
@@ -81,6 +89,33 @@ func ReadImage(ctx context.Context) (ImageEvent, error) {
 		return ImageEvent{}, errors.New("clipboard does not contain an image")
 	}
 	return ImageEvent{Bytes: data}, nil
+}
+
+// ReadSnapshot returns the current clipboard image or text. Sensitivity is
+// checked before either representation is read.
+func ReadSnapshot(ctx context.Context) (Snapshot, error) {
+	nativeInit.Do(func() { nativeInitErr = nativeclipboard.Init() })
+	if nativeInitErr != nil {
+		return Snapshot{}, wrapError("system clipboard unavailable", nativeInitErr)
+	}
+	if sensitive, _ := nativeclipboard.Sensitive(ctx); sensitive {
+		return Snapshot{Sensitive: true}, nil
+	}
+	image, imageErr := nativeclipboard.Read(ctx, nativeclipboard.FmtImage)
+	if imageErr == nil && len(image) > 0 {
+		return Snapshot{Image: image}, nil
+	}
+	text, textErr := nativeclipboard.Read(ctx, nativeclipboard.FmtText)
+	if textErr != nil {
+		if imageErr != nil {
+			return Snapshot{}, wrapError("read clipboard", errors.Join(imageErr, textErr))
+		}
+		return Snapshot{}, wrapError("read clipboard text", textErr)
+	}
+	if len(text) == 0 {
+		return Snapshot{}, errors.New("clipboard does not contain an image or text")
+	}
+	return Snapshot{Text: string(text)}, nil
 }
 
 // wrapError wraps an error with additional context.

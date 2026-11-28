@@ -29,7 +29,7 @@ $ clip report.pdf 5-10
 Clip detects the file type automatically, understands document-specific ranges, and performs OCR locally. Your files and extracted text never leave your computer.
 
 > [!IMPORTANT]
-> The latest stable release is **v2.0.0**. The next capabilities are being reviewed in the [v2.1–v2.5 pull requests](#roadmap). Commands marked **Upcoming** below become available after those releases are merged and published.
+> The latest stable release is **v2.0.0**. The next capabilities are being reviewed in the [v2.1–v2.6 pull requests](#roadmap). Commands marked **Upcoming** below become available after those releases are merged and published.
 
 ## Why Clip
 
@@ -131,7 +131,7 @@ Ranges use the natural unit for each format:
 | `--version` | Print the installed Clip version |
 | `--help` | Display CLI help |
 
-### Upcoming v2.1–v2.5
+### Upcoming v2.1–v2.6
 
 | Option | Purpose | Planned release |
 |---|---|---|
@@ -143,6 +143,7 @@ Ranges use the natural unit for each format:
 | `--make-searchable <pdf>` | Preserve the PDF and add an invisible OCR text layer | v2.3 |
 | `--watch` | Continuously OCR images copied to the clipboard | v2.4 |
 | `--clipboard` | OCR the image currently on the clipboard once | v2.5 |
+| `--auto` | Detect and process a clipboard image, local path, public HTTPS document, or text | v2.6 |
 
 Preview examples from the open release pull requests:
 
@@ -158,6 +159,8 @@ clip --watch
 clip --watch --smart --rich
 clip --clipboard
 clip --clipboard --smart --stdout
+clip --auto
+clip --auto --smart --format jsonl --chunks 1200 --stdout
 ```
 
 `--make-searchable` defaults to `<name>.searchable.pdf`, skips pages that already contain native text, and never overwrites an existing output file.
@@ -273,6 +276,31 @@ clip --clipboard
 
 Copy an image first, run the command, and Clip recognizes the current clipboard image once before exiting. This is ideal for shell aliases, launchers, shortcuts, and automation that should not leave a watcher running. Sensitive content is refused before its bytes are read.
 
+## Universal Clipboard Input
+
+Upcoming in v2.6, one command chooses the pipeline for you:
+
+```sh
+clip --auto
+```
+
+Copy any supported input first:
+
+- an image is recognized with the local OCR engine;
+- a local file or directory path is sent through Clip's document pipeline;
+- a public HTTPS document is downloaded privately, extracted locally, and deleted immediately;
+- ordinary text can be converted to Markdown, JSON, JSONL, rich clipboard content, or AI-ready chunks.
+
+All existing output controls compose with universal input:
+
+```sh
+clip --auto --smart --rich
+clip --auto --format json --stdout
+clip --auto --format jsonl --chunks 1200 --output context.jsonl
+```
+
+Sensitive clipboard items are rejected before their contents are read. Remote input is HTTPS-only, rejects credentials and non-public network addresses, validates every redirect, applies the global 50 MiB limit, and uses a private temporary directory.
+
 ## Roadmap
 
 The next releases are intentionally kept as focused, independently reviewable pull requests:
@@ -284,8 +312,9 @@ The next releases are intentionally kept as focused, independently reviewable pu
 | v2.3 | Rich clipboard copy and searchable-PDF export | [#19](https://github.com/upendra7470/clip/pull/19) |
 | v2.4 | Continuous clipboard image OCR | [#20](https://github.com/upendra7470/clip/pull/20) |
 | v2.5 | Instant one-shot clipboard OCR | [#21](https://github.com/upendra7470/clip/pull/21) |
+| v2.6 | Universal, security-hardened clipboard input | [#22](https://github.com/upendra7470/clip/pull/22) |
 
-These changes are stacked and should be merged in version order. See the [v2 specification](docs/V2.md), [v2.1 design](docs/V2.1.md), [v2.2 design](docs/V2.2.md), [v2.4 design](docs/V2.4.md), [v2.5 design](docs/V2.5.md), and [changelog](CHANGELOG.md) for details.
+These changes are stacked and should be merged in version order. See the [v2 specification](docs/V2.md), [v2.1 design](docs/V2.1.md), [v2.2 design](docs/V2.2.md), [v2.4 design](docs/V2.4.md), [v2.5 design](docs/V2.5.md), [v2.6 design](docs/V2.6.md), and [changelog](CHANGELOG.md) for details.
 
 ## Build and contribute
 

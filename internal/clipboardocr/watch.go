@@ -31,6 +31,25 @@ type Config struct {
 	Stdout bool
 }
 
+// RecognizeOnce performs OCR on one clipboard image and returns plain text.
+// It is used by universal input mode when rendering and delivery are handled
+// by the main document pipeline.
+func RecognizeOnce(ctx context.Context, event clipboard.ImageEvent, recognize Recognizer) (string, error) {
+	if recognize == nil {
+		return "", fmt.Errorf("OCR recognizer is required")
+	}
+	if event.Sensitive {
+		return "", fmt.Errorf("refusing to OCR sensitive clipboard content")
+	}
+	if len(event.Bytes) == 0 {
+		return "", fmt.Errorf("clipboard does not contain an image")
+	}
+	if len(event.Bytes) > security.MaxInputFileSize {
+		return "", fmt.Errorf("clipboard image encoded size exceeds %d bytes", security.MaxInputFileSize)
+	}
+	return recognizeImage(ctx, event.Bytes, recognize)
+}
+
 // RunOnce recognizes one current clipboard image and exits.
 func RunOnce(
 	ctx context.Context,
@@ -133,31 +152,9 @@ func process(
 	copier Copier,
 	stdout, status io.Writer,
 ) error {
-	temporary, err := os.CreateTemp("", "clip-clipboard-*.png")
-	if err != nil {
-		return fmt.Errorf("create private image: %w", err)
-	}
-	path := temporary.Name()
-	defer func() { _ = os.Remove(path) }()
-	if err := os.Chmod(path, 0600); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("secure private image: %w", err)
-	}
-	if _, err := temporary.Write(image); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("write private image: %w", err)
-	}
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close private image: %w", err)
-	}
-
-	text, err := recognize(ctx, path)
+	text, err := recognizeImage(ctx, image, recognize)
 	if err != nil {
 		return err
-	}
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return fmt.Errorf("OCR found no readable text")
 	}
 	documents := []clipoutput.Document{{Source: "clipboard.png", Type: "png", Text: text}}
 	rendered, err := clipoutput.Render(documents, config.Format, 0)
@@ -181,4 +178,34 @@ func process(
 	}
 	fmt.Fprintf(status, "✓ Clipboard image: recognized %d words → %s\n", len(strings.Fields(text)), destination)
 	return nil
+}
+
+func recognizeImage(ctx context.Context, image []byte, recognize Recognizer) (string, error) {
+	temporary, err := os.CreateTemp("", "clip-clipboard-*.png")
+	if err != nil {
+		return "", fmt.Errorf("create private image: %w", err)
+	}
+	path := temporary.Name()
+	defer func() { _ = os.Remove(path) }()
+	if err := os.Chmod(path, 0600); err != nil {
+		_ = temporary.Close()
+		return "", fmt.Errorf("secure private image: %w", err)
+	}
+	if _, err := temporary.Write(image); err != nil {
+		_ = temporary.Close()
+		return "", fmt.Errorf("write private image: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return "", fmt.Errorf("close private image: %w", err)
+	}
+
+	text, err := recognize(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", fmt.Errorf("OCR found no readable text")
+	}
+	return text, nil
 }

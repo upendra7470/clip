@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Universal clipboard routing with `clip --auto` for images, local paths, public HTTPS documents, and text
+- Secure remote-document extraction with redirect validation, public-network enforcement, bounded downloads, and private cleanup
+- Full structured output, chunking, rich copy, stdout, and file-output support for universal clipboard input
 - One-shot clipboard image OCR with `clip --clipboard`
 - Instant clipboard OCR support for smart/layout processing, rich copy, structured formats, and stdout
 - Continuous clipboard image OCR with `clip --watch`

@@ -170,6 +170,9 @@ func TestCompletionScript(t *testing.T) {
 	if !bytes.Contains([]byte(script), []byte("--clipboard")) {
 		t.Fatalf("completion missing v2.5 options: %s", script)
 	}
+	if !bytes.Contains([]byte(script), []byte("--auto")) {
+		t.Fatalf("completion missing v2.6 options: %s", script)
+	}
 }
 
 func TestExplicitPDFRejectsNonPDF(t *testing.T) {
@@ -257,6 +260,71 @@ func TestClipboardRejectsFileModes(t *testing.T) {
 	}
 	if !bytes.Contains(stderr.Bytes(), []byte("--clipboard cannot be combined")) {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestAutoRendersClipboardTextAsStructuredOutput(t *testing.T) {
+	previous := readClipboardSnapshot
+	readClipboardSnapshot = func(context.Context) (clipboard.Snapshot, error) {
+		return clipboard.Snapshot{Text: "first paragraph\n\nsecond paragraph"}, nil
+	}
+	t.Cleanup(func() { readClipboardSnapshot = previous })
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--auto", "--format", "json", "--stdout"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("Run() code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"source": "clipboard.txt"`) || !strings.Contains(stdout.String(), "second paragraph") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "Auto-detected clipboard text") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestAutoProcessesClipboardFilePath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "clipboard-notes.txt")
+	if err := os.WriteFile(path, []byte("universal input works"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	previous := readClipboardSnapshot
+	readClipboardSnapshot = func(context.Context) (clipboard.Snapshot, error) {
+		return clipboard.Snapshot{Text: `"` + path + `"`}, nil
+	}
+	t.Cleanup(func() { readClipboardSnapshot = previous })
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--auto", "--stdout"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("Run() code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "universal input works") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
+func TestAutoRejectsSensitiveClipboard(t *testing.T) {
+	previous := readClipboardSnapshot
+	readClipboardSnapshot = func(context.Context) (clipboard.Snapshot, error) {
+		return clipboard.Snapshot{Sensitive: true}, nil
+	}
+	t.Cleanup(func() { readClipboardSnapshot = previous })
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--auto"}, &stdout, &stderr); code == 0 {
+		t.Fatal("Run() processed sensitive clipboard content")
+	}
+	if !strings.Contains(stderr.String(), "refusing to process sensitive") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestAutoRejectsFilename(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--auto", "document.pdf"}, &stdout, &stderr); code == 0 {
+		t.Fatal("Run() accepted a filename with --auto")
+	}
+	if !strings.Contains(stderr.String(), "--auto reads from the clipboard") {
+		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
 
