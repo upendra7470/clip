@@ -7,13 +7,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/upendra7470/clip/internal/application"
 	"github.com/upendra7470/clip/internal/clipboard"
+	"github.com/upendra7470/clip/internal/clipboardocr"
 	"github.com/upendra7470/clip/internal/detect"
 	"github.com/upendra7470/clip/internal/filetype"
 	clipLayout "github.com/upendra7470/clip/internal/layout"
@@ -73,6 +76,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	screenFlag := flagSet.Bool("screen", false, "Select a screen region and copy its text")
 	richFlag := flagSet.Bool("rich", false, "Copy formatted HTML with a plain-text fallback")
 	searchableFlag := flagSet.Bool("make-searchable", false, "Add an invisible OCR text layer to a scanned PDF")
+	watchFlag := flagSet.Bool("watch", false, "Continuously OCR images copied to the clipboard")
 	err := flagSet.Parse(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "Error parsing flags: %v\n", err)
@@ -114,6 +118,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	if *searchableFlag && (*imageFlag || *pdfFlag || *richFlag || *listFlag || *inspectFlag || *recursiveFlag || *stdoutFlag || *chunkSize > 0 || *formatFlag != "text") {
 		fmt.Fprintln(stderr, "Error: --make-searchable only accepts OCR, layout, language, and --output options")
+		return 1
+	}
+	if *watchFlag && (*screenFlag || *imageFlag || *pdfFlag || *searchableFlag || *listFlag || *inspectFlag || *recursiveFlag || *outputPath != "" || *chunkSize > 0) {
+		fmt.Fprintln(stderr, "Error: --watch cannot be combined with file modes, inspection, recursion, chunks, or --output")
 		return 1
 	}
 	if _, err := clipLayout.ParseMode(*layoutFlag); err != nil {
@@ -273,6 +281,37 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	// Create application with registry and clipboard
 	app := application.New(reg, clipboardAdapter)
+	if *watchFlag {
+		if len(flagSet.Args()) != 0 {
+			fmt.Fprintln(stderr, "Error: --watch does not accept a filename")
+			return 1
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		events, err := clipboard.WatchImages(ctx)
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		statusWriter := stdout
+		if *stdoutFlag {
+			statusWriter = stderr
+		}
+		fmt.Fprintln(statusWriter, "Watching the clipboard for images… Press Ctrl+C to stop.")
+		err = clipboardocr.Run(ctx, events, clipboardocr.Config{
+			Format: outputFormat,
+			Rich:   *richFlag,
+			Stdout: *stdoutFlag,
+		}, func(ctx context.Context, path string) (string, error) {
+			return ocr.RecognizeSmartLayout(ctx, path, *smartFlag, *layoutFlag)
+		}, clipboardAdapter, stdout, stderr)
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(statusWriter, "✓ Clipboard OCR stopped")
+		return 0
+	}
 	if *screenFlag {
 		if len(flagSet.Args()) != 0 {
 			fmt.Fprintln(stderr, "Error: --screen does not accept a filename")
@@ -603,6 +642,8 @@ func showHelp() {
 	fmt.Println("    clip --rich --pdf report.pdf")
 	fmt.Println("    clip --make-searchable scanned.pdf")
 	fmt.Println("    clip --make-searchable --output archive.pdf scanned.pdf")
+	fmt.Println("    clip --watch")
+	fmt.Println("    clip --watch --smart --rich")
 	fmt.Println("    clip --format jsonl --chunks 1200 --stdout handbook.pdf")
 	fmt.Println("    clip --recursive --output knowledge.md ./documents")
 	fmt.Println()
@@ -638,6 +679,7 @@ func showHelp() {
 	fmt.Println("  --screen            Select a screen region, OCR it, and copy the text")
 	fmt.Println("  --rich              Copy formatted text with a plain-text fallback")
 	fmt.Println("  --make-searchable   Preserve a PDF and add an invisible OCR text layer")
+	fmt.Println("  --watch             OCR each image copied to the clipboard until stopped")
 	fmt.Println("  --format <format>   text, markdown, json, or jsonl")
 	fmt.Println("  --chunks <size>     Create AI-ready chunks")
 	fmt.Println("  --output <file>     Write to a file instead of clipboard")
@@ -718,7 +760,7 @@ func validateOCRLanguage(language string) error {
 }
 
 func completionScript(shell string) (string, error) {
-	flags := "--help --version --list --inspect --ocr-status --smart --image --pdf --screen --rich --make-searchable --layout --format --chunks --output --stdout --recursive --lang --completion"
+	flags := "--help --version --list --inspect --ocr-status --smart --image --pdf --screen --rich --make-searchable --watch --layout --format --chunks --output --stdout --recursive --lang --completion"
 	switch strings.ToLower(shell) {
 	case "bash":
 		return "_clip() { COMPREPLY=( $(compgen -W '" + flags + "' -- \"${COMP_WORDS[COMP_CWORD]}\") ); }\ncomplete -F _clip clip\n", nil

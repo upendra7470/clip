@@ -29,7 +29,7 @@ $ clip report.pdf 5-10
 Clip detects the file type automatically, understands document-specific ranges, and performs OCR locally. Your files and extracted text never leave your computer.
 
 > [!IMPORTANT]
-> The latest stable release is **v2.0.0**. Layout-aware OCR, screen OCR, rich copy, and searchable-PDF export are being reviewed in the [v2.1–v2.3 pull requests](#roadmap). Commands marked **Upcoming** below become available after those releases are merged and published.
+> The latest stable release is **v2.0.0**. The next capabilities are being reviewed in the [v2.1–v2.4 pull requests](#roadmap). Commands marked **Upcoming** below become available after those releases are merged and published.
 
 ## Why Clip
 
@@ -131,7 +131,7 @@ Ranges use the natural unit for each format:
 | `--version` | Print the installed Clip version |
 | `--help` | Display CLI help |
 
-### Upcoming v2.1–v2.3
+### Upcoming v2.1–v2.4
 
 | Option | Purpose | Planned release |
 |---|---|---|
@@ -141,6 +141,7 @@ Ranges use the natural unit for each format:
 | `--screen` | Select a screen region, OCR it offline, and copy the result | v2.2 |
 | `--rich` | Copy safe formatted HTML and a plain-text fallback together | v2.3 |
 | `--make-searchable <pdf>` | Preserve the PDF and add an invisible OCR text layer | v2.3 |
+| `--watch` | Continuously OCR images copied to the clipboard | v2.4 |
 
 Preview examples from the open release pull requests:
 
@@ -152,6 +153,8 @@ clip --screen --format markdown --stdout
 clip --rich --pdf report.pdf
 clip --make-searchable scanned.pdf
 clip --make-searchable --output archive.pdf scanned.pdf
+clip --watch
+clip --watch --smart --rich
 ```
 
 `--make-searchable` defaults to `<name>.searchable.pdf`, skips pages that already contain native text, and never overwrites an existing output file.
@@ -243,17 +246,34 @@ clip --completion powershell
 
 Optional Windows Explorer, macOS Finder, and Linux file-manager templates are available in [`integrations/`](integrations/).
 
+## Clipboard Watch OCR
+
+Upcoming in v2.4, `clip --watch` turns the clipboard into an always-ready OCR inbox:
+
+```sh
+clip --watch
+```
+
+Copy a screenshot or image from any application. Clip recognizes it locally, replaces the image with usable text, and waits for the next image. Press `Ctrl+C` to stop.
+
+- Repeated clipboard events are deduplicated.
+- Password-manager content marked as sensitive is never OCRed.
+- Each temporary image uses private permissions and is deleted immediately.
+- Invalid images are reported without stopping the watcher.
+- `--smart`, `--layout`, `--format`, `--rich`, and `--stdout` remain available.
+
 ## Roadmap
 
-The next releases are intentionally kept as three focused, independently reviewable pull requests:
+The next releases are intentionally kept as focused, independently reviewable pull requests:
 
 | Version | Update | Pull request |
 |---|---|---|
 | v2.1 | Layout-aware image OCR and PDF extraction | [#17](https://github.com/upendra7470/clip/pull/17) |
 | v2.2 | Instant offline screen-region OCR | [#18](https://github.com/upendra7470/clip/pull/18) |
 | v2.3 | Rich clipboard copy and searchable-PDF export | [#19](https://github.com/upendra7470/clip/pull/19) |
+| v2.4 | Continuous clipboard image OCR | [#20](https://github.com/upendra7470/clip/pull/20) |
 
-These changes are stacked: merge v2.1 first, followed by v2.2 and v2.3. See the [v2 specification](docs/V2.md), [v2.1 design](docs/V2.1.md), [v2.2 design](docs/V2.2.md), and [changelog](CHANGELOG.md) for details.
+These changes are stacked and should be merged in version order. See the [v2 specification](docs/V2.md), [v2.1 design](docs/V2.1.md), [v2.2 design](docs/V2.2.md), [v2.4 design](docs/V2.4.md), and [changelog](CHANGELOG.md) for details.
 
 ## Build and contribute
 

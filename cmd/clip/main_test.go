@@ -164,6 +164,9 @@ func TestCompletionScript(t *testing.T) {
 	if !bytes.Contains([]byte(script), []byte("--rich")) || !bytes.Contains([]byte(script), []byte("--make-searchable")) {
 		t.Fatalf("completion missing v2.3 options: %s", script)
 	}
+	if !bytes.Contains([]byte(script), []byte("--watch")) {
+		t.Fatalf("completion missing v2.4 options: %s", script)
+	}
 }
 
 func TestExplicitPDFRejectsNonPDF(t *testing.T) {
@@ -210,6 +213,26 @@ func TestScreenRejectsFilename(t *testing.T) {
 		t.Fatal("Run() accepted a filename with --screen")
 	}
 	if !bytes.Contains(stderr.Bytes(), []byte("does not accept a filename")) {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestWatchRejectsFilename(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--watch", "document.png"}, &stdout, &stderr); code == 0 {
+		t.Fatal("Run() accepted a filename with --watch")
+	}
+	if !bytes.Contains(stderr.Bytes(), []byte("--watch does not accept a filename")) {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestWatchRejectsFileModes(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--watch", "--pdf"}, &stdout, &stderr); code == 0 {
+		t.Fatal("Run() accepted --watch with --pdf")
+	}
+	if !bytes.Contains(stderr.Bytes(), []byte("--watch cannot be combined")) {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
 	}
 }

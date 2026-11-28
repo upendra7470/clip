@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Continuous clipboard image OCR with `clip --watch`
+- Clipboard watch support for smart/layout OCR, rich copy, structured formats, and stdout
+- Sensitive-clipboard protection and duplicate image suppression in watch mode
 - Rich clipboard output with `--rich`, including safe HTML, plain-text fallback, and Windows CF_HTML compatibility
 - Searchable scanned-PDF export with `--make-searchable` and optional `--output`
 - Page-aware OCR layering that skips PDF pages which already contain native searchable text
@@ -38,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
+- Clipboard watch isolates each image in a private temporary file, removes it immediately, and continues after malformed images
 - PDF processing now uses a stateless embedded configuration and never needs to create external pdfcpu settings
 - Searchable-PDF output uses private temporary files, atomic publication, and refuses accidental overwrites
 - Private screen captures are stored with restricted permissions and deleted immediately after OCR

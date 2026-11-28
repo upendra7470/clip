@@ -34,6 +34,35 @@ func CopyRich(plainText, html string) error {
 	return copyRichNative(plainText, html)
 }
 
+// ImageEvent is a clipboard image change. Sensitive events are surfaced so
+// callers can deliberately ignore content copied by password managers and
+// other privacy-aware applications.
+type ImageEvent struct {
+	Bytes     []byte
+	Sensitive bool
+}
+
+// WatchImages streams PNG-normalized clipboard images until ctx is canceled.
+func WatchImages(ctx context.Context) (<-chan ImageEvent, error) {
+	nativeInit.Do(func() { nativeInitErr = nativeclipboard.Init() })
+	if nativeInitErr != nil {
+		return nil, wrapError("system clipboard unavailable", nativeInitErr)
+	}
+	input := nativeclipboard.Watch(ctx, nativeclipboard.FmtImage)
+	output := make(chan ImageEvent)
+	go func() {
+		defer close(output)
+		for event := range input {
+			select {
+			case output <- ImageEvent{Bytes: event.Bytes, Sensitive: event.Sensitive}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return output, nil
+}
+
 // wrapError wraps an error with additional context.
 func wrapError(message string, err error) error {
 	if err == nil {
