@@ -63,6 +63,26 @@ func WatchImages(ctx context.Context) (<-chan ImageEvent, error) {
 	return output, nil
 }
 
+// ReadImage returns the image currently stored on the clipboard. Clipboard
+// content marked sensitive is reported without reading its bytes.
+func ReadImage(ctx context.Context) (ImageEvent, error) {
+	nativeInit.Do(func() { nativeInitErr = nativeclipboard.Init() })
+	if nativeInitErr != nil {
+		return ImageEvent{}, wrapError("system clipboard unavailable", nativeInitErr)
+	}
+	if sensitive, _ := nativeclipboard.Sensitive(ctx); sensitive {
+		return ImageEvent{Sensitive: true}, nil
+	}
+	data, err := nativeclipboard.Read(ctx, nativeclipboard.FmtImage)
+	if err != nil {
+		return ImageEvent{}, wrapError("read clipboard image", err)
+	}
+	if len(data) == 0 {
+		return ImageEvent{}, errors.New("clipboard does not contain an image")
+	}
+	return ImageEvent{Bytes: data}, nil
+}
+
 // wrapError wraps an error with additional context.
 func wrapError(message string, err error) error {
 	if err == nil {

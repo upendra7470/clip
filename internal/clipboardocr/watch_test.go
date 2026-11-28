@@ -90,3 +90,33 @@ func TestRunSkipsSensitiveImages(t *testing.T) {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
+
+func TestRunOnceRecognizesCurrentClipboardImage(t *testing.T) {
+	copier := &testCopier{}
+	var stdout, stderr bytes.Buffer
+	err := RunOnce(context.Background(), clipboard.ImageEvent{Bytes: []byte("image")}, Config{Format: clipoutput.Text},
+		func(context.Context, string) (string, error) { return "instant result", nil },
+		copier, &stdout, &stderr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if copier.plain != "instant result" {
+		t.Fatalf("copied text = %q", copier.plain)
+	}
+	if !strings.Contains(stdout.String(), "recognized 2 words") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
+func TestRunOnceRefusesSensitiveOrMissingImages(t *testing.T) {
+	recognize := func(context.Context, string) (string, error) {
+		t.Fatal("recognizer called")
+		return "", nil
+	}
+	for _, event := range []clipboard.ImageEvent{{Sensitive: true}, {}} {
+		err := RunOnce(context.Background(), event, Config{Format: clipoutput.Text, Stdout: true}, recognize, nil, &bytes.Buffer{}, &bytes.Buffer{})
+		if err == nil {
+			t.Fatalf("RunOnce(%+v) succeeded", event)
+		}
+	}
+}

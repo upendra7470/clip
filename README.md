@@ -29,7 +29,7 @@ $ clip report.pdf 5-10
 Clip detects the file type automatically, understands document-specific ranges, and performs OCR locally. Your files and extracted text never leave your computer.
 
 > [!IMPORTANT]
-> The latest stable release is **v2.0.0**. The next capabilities are being reviewed in the [v2.1–v2.4 pull requests](#roadmap). Commands marked **Upcoming** below become available after those releases are merged and published.
+> The latest stable release is **v2.0.0**. The next capabilities are being reviewed in the [v2.1–v2.5 pull requests](#roadmap). Commands marked **Upcoming** below become available after those releases are merged and published.
 
 ## Why Clip
 
@@ -131,7 +131,7 @@ Ranges use the natural unit for each format:
 | `--version` | Print the installed Clip version |
 | `--help` | Display CLI help |
 
-### Upcoming v2.1–v2.4
+### Upcoming v2.1–v2.5
 
 | Option | Purpose | Planned release |
 |---|---|---|
@@ -142,6 +142,7 @@ Ranges use the natural unit for each format:
 | `--rich` | Copy safe formatted HTML and a plain-text fallback together | v2.3 |
 | `--make-searchable <pdf>` | Preserve the PDF and add an invisible OCR text layer | v2.3 |
 | `--watch` | Continuously OCR images copied to the clipboard | v2.4 |
+| `--clipboard` | OCR the image currently on the clipboard once | v2.5 |
 
 Preview examples from the open release pull requests:
 
@@ -155,6 +156,8 @@ clip --make-searchable scanned.pdf
 clip --make-searchable --output archive.pdf scanned.pdf
 clip --watch
 clip --watch --smart --rich
+clip --clipboard
+clip --clipboard --smart --stdout
 ```
 
 `--make-searchable` defaults to `<name>.searchable.pdf`, skips pages that already contain native text, and never overwrites an existing output file.
@@ -262,6 +265,14 @@ Copy a screenshot or image from any application. Clip recognizes it locally, rep
 - Invalid images are reported without stopping the watcher.
 - `--smart`, `--layout`, `--format`, `--rich`, and `--stdout` remain available.
 
+For a one-shot workflow, upcoming v2.5 adds:
+
+```sh
+clip --clipboard
+```
+
+Copy an image first, run the command, and Clip recognizes the current clipboard image once before exiting. This is ideal for shell aliases, launchers, shortcuts, and automation that should not leave a watcher running. Sensitive content is refused before its bytes are read.
+
 ## Roadmap
 
 The next releases are intentionally kept as focused, independently reviewable pull requests:
@@ -272,8 +283,9 @@ The next releases are intentionally kept as focused, independently reviewable pu
 | v2.2 | Instant offline screen-region OCR | [#18](https://github.com/upendra7470/clip/pull/18) |
 | v2.3 | Rich clipboard copy and searchable-PDF export | [#19](https://github.com/upendra7470/clip/pull/19) |
 | v2.4 | Continuous clipboard image OCR | [#20](https://github.com/upendra7470/clip/pull/20) |
+| v2.5 | Instant one-shot clipboard OCR | [#21](https://github.com/upendra7470/clip/pull/21) |
 
-These changes are stacked and should be merged in version order. See the [v2 specification](docs/V2.md), [v2.1 design](docs/V2.1.md), [v2.2 design](docs/V2.2.md), [v2.4 design](docs/V2.4.md), and [changelog](CHANGELOG.md) for details.
+These changes are stacked and should be merged in version order. See the [v2 specification](docs/V2.md), [v2.1 design](docs/V2.1.md), [v2.2 design](docs/V2.2.md), [v2.4 design](docs/V2.4.md), [v2.5 design](docs/V2.5.md), and [changelog](CHANGELOG.md) for details.
 
 ## Build and contribute
 

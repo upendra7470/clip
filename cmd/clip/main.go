@@ -77,6 +77,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	richFlag := flagSet.Bool("rich", false, "Copy formatted HTML with a plain-text fallback")
 	searchableFlag := flagSet.Bool("make-searchable", false, "Add an invisible OCR text layer to a scanned PDF")
 	watchFlag := flagSet.Bool("watch", false, "Continuously OCR images copied to the clipboard")
+	clipboardFlag := flagSet.Bool("clipboard", false, "OCR the image currently on the clipboard")
 	err := flagSet.Parse(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "Error parsing flags: %v\n", err)
@@ -120,8 +121,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "Error: --make-searchable only accepts OCR, layout, language, and --output options")
 		return 1
 	}
-	if *watchFlag && (*screenFlag || *imageFlag || *pdfFlag || *searchableFlag || *listFlag || *inspectFlag || *recursiveFlag || *outputPath != "" || *chunkSize > 0) {
+	if *watchFlag && (*clipboardFlag || *screenFlag || *imageFlag || *pdfFlag || *searchableFlag || *listFlag || *inspectFlag || *recursiveFlag || *outputPath != "" || *chunkSize > 0) {
 		fmt.Fprintln(stderr, "Error: --watch cannot be combined with file modes, inspection, recursion, chunks, or --output")
+		return 1
+	}
+	if *clipboardFlag && (*screenFlag || *imageFlag || *pdfFlag || *searchableFlag || *listFlag || *inspectFlag || *recursiveFlag || *outputPath != "" || *chunkSize > 0) {
+		fmt.Fprintln(stderr, "Error: --clipboard cannot be combined with file modes, inspection, recursion, chunks, or --output")
 		return 1
 	}
 	if _, err := clipLayout.ParseMode(*layoutFlag); err != nil {
@@ -281,6 +286,31 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	// Create application with registry and clipboard
 	app := application.New(reg, clipboardAdapter)
+	if *clipboardFlag {
+		if len(flagSet.Args()) != 0 {
+			fmt.Fprintln(stderr, "Error: --clipboard does not accept a filename")
+			return 1
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		event, err := clipboard.ReadImage(ctx)
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		err = clipboardocr.RunOnce(ctx, event, clipboardocr.Config{
+			Format: outputFormat,
+			Rich:   *richFlag,
+			Stdout: *stdoutFlag,
+		}, func(ctx context.Context, path string) (string, error) {
+			return ocr.RecognizeSmartLayout(ctx, path, *smartFlag, *layoutFlag)
+		}, clipboardAdapter, stdout, stderr)
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+		return 0
+	}
 	if *watchFlag {
 		if len(flagSet.Args()) != 0 {
 			fmt.Fprintln(stderr, "Error: --watch does not accept a filename")
@@ -644,6 +674,8 @@ func showHelp() {
 	fmt.Println("    clip --make-searchable --output archive.pdf scanned.pdf")
 	fmt.Println("    clip --watch")
 	fmt.Println("    clip --watch --smart --rich")
+	fmt.Println("    clip --clipboard")
+	fmt.Println("    clip --clipboard --smart --stdout")
 	fmt.Println("    clip --format jsonl --chunks 1200 --stdout handbook.pdf")
 	fmt.Println("    clip --recursive --output knowledge.md ./documents")
 	fmt.Println()
@@ -680,6 +712,7 @@ func showHelp() {
 	fmt.Println("  --rich              Copy formatted text with a plain-text fallback")
 	fmt.Println("  --make-searchable   Preserve a PDF and add an invisible OCR text layer")
 	fmt.Println("  --watch             OCR each image copied to the clipboard until stopped")
+	fmt.Println("  --clipboard         OCR the current clipboard image once and exit")
 	fmt.Println("  --format <format>   text, markdown, json, or jsonl")
 	fmt.Println("  --chunks <size>     Create AI-ready chunks")
 	fmt.Println("  --output <file>     Write to a file instead of clipboard")
@@ -760,7 +793,7 @@ func validateOCRLanguage(language string) error {
 }
 
 func completionScript(shell string) (string, error) {
-	flags := "--help --version --list --inspect --ocr-status --smart --image --pdf --screen --rich --make-searchable --watch --layout --format --chunks --output --stdout --recursive --lang --completion"
+	flags := "--help --version --list --inspect --ocr-status --smart --image --pdf --screen --rich --make-searchable --watch --clipboard --layout --format --chunks --output --stdout --recursive --lang --completion"
 	switch strings.ToLower(shell) {
 	case "bash":
 		return "_clip() { COMPREPLY=( $(compgen -W '" + flags + "' -- \"${COMP_WORDS[COMP_CWORD]}\") ); }\ncomplete -F _clip clip\n", nil

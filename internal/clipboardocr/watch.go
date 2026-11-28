@@ -31,6 +31,37 @@ type Config struct {
 	Stdout bool
 }
 
+// RunOnce recognizes one current clipboard image and exits.
+func RunOnce(
+	ctx context.Context,
+	event clipboard.ImageEvent,
+	config Config,
+	recognize Recognizer,
+	copier Copier,
+	stdout, stderr io.Writer,
+) error {
+	if recognize == nil {
+		return fmt.Errorf("OCR recognizer is required")
+	}
+	if copier == nil && !config.Stdout {
+		return fmt.Errorf("clipboard destination is required")
+	}
+	if event.Sensitive {
+		return fmt.Errorf("refusing to OCR sensitive clipboard content")
+	}
+	if len(event.Bytes) == 0 {
+		return fmt.Errorf("clipboard does not contain an image")
+	}
+	if len(event.Bytes) > security.MaxInputFileSize {
+		return fmt.Errorf("clipboard image encoded size exceeds %d bytes", security.MaxInputFileSize)
+	}
+	statusWriter := stdout
+	if config.Stdout {
+		statusWriter = stderr
+	}
+	return process(ctx, event.Bytes, config, recognize, copier, stdout, statusWriter)
+}
+
 // Run processes clipboard image events until the stream closes or ctx is
 // canceled. A bad image is reported and skipped so watch mode stays available
 // for the next clipboard change.

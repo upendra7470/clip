@@ -167,6 +167,9 @@ func TestCompletionScript(t *testing.T) {
 	if !bytes.Contains([]byte(script), []byte("--watch")) {
 		t.Fatalf("completion missing v2.4 options: %s", script)
 	}
+	if !bytes.Contains([]byte(script), []byte("--clipboard")) {
+		t.Fatalf("completion missing v2.5 options: %s", script)
+	}
 }
 
 func TestExplicitPDFRejectsNonPDF(t *testing.T) {
@@ -233,6 +236,26 @@ func TestWatchRejectsFileModes(t *testing.T) {
 		t.Fatal("Run() accepted --watch with --pdf")
 	}
 	if !bytes.Contains(stderr.Bytes(), []byte("--watch cannot be combined")) {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestClipboardRejectsFilename(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--clipboard", "document.png"}, &stdout, &stderr); code == 0 {
+		t.Fatal("Run() accepted a filename with --clipboard")
+	}
+	if !bytes.Contains(stderr.Bytes(), []byte("--clipboard does not accept a filename")) {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestClipboardRejectsFileModes(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--clipboard", "--pdf"}, &stdout, &stderr); code == 0 {
+		t.Fatal("Run() accepted --clipboard with --pdf")
+	}
+	if !bytes.Contains(stderr.Bytes(), []byte("--clipboard cannot be combined")) {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
 	}
 }

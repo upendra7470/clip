@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- One-shot clipboard image OCR with `clip --clipboard`
+- Instant clipboard OCR support for smart/layout processing, rich copy, structured formats, and stdout
 - Continuous clipboard image OCR with `clip --watch`
 - Clipboard watch support for smart/layout OCR, rich copy, structured formats, and stdout
 - Sensitive-clipboard protection and duplicate image suppression in watch mode
