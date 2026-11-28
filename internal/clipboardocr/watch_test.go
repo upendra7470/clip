@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -43,7 +44,9 @@ func TestRunRecognizesEachUniqueImageAndDeletesTemporaryFiles(t *testing.T) {
 		if err != nil {
 			return "", err
 		}
-		if info.Mode().Perm()&0077 != 0 {
+		// Windows reports synthesized Unix permission bits; privacy there is
+		// enforced by the current user's temporary-directory ACL.
+		if runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0 {
 			t.Fatalf("temporary image permissions = %o", info.Mode().Perm())
 		}
 		recognitions++

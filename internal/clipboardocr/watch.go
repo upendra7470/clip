@@ -108,6 +108,10 @@ func process(
 	}
 	path := temporary.Name()
 	defer func() { _ = os.Remove(path) }()
+	if err := os.Chmod(path, 0600); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("secure private image: %w", err)
+	}
 	if _, err := temporary.Write(image); err != nil {
 		_ = temporary.Close()
 		return fmt.Errorf("write private image: %w", err)
