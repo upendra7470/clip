@@ -12,12 +12,75 @@ import (
 
 var nativeInit sync.Once
 var nativeInitErr error
+var htmlFormat = nativeclipboard.Register("text/html")
 
 // Copy copies the given text to the system clipboard.
 // It returns an error if the clipboard is unavailable or the operation fails.
 func Copy(text string) error {
 	// Platform-specific implementation will be provided by the build tag files
 	return copyImpl(text)
+}
+
+// CopyRich publishes HTML and plain-text representations in one clipboard
+// operation. Rich-text applications receive HTML while every other
+// application can still paste the plain-text fallback.
+func CopyRich(plainText, html string) error {
+	testClipboardMu.Lock()
+	tc := testClipboardImpl
+	testClipboardMu.Unlock()
+	if tc != nil {
+		return tc.CopyRich(plainText, html)
+	}
+	return copyRichNative(plainText, html)
+}
+
+// ImageEvent is a clipboard image change. Sensitive events are surfaced so
+// callers can deliberately ignore content copied by password managers and
+// other privacy-aware applications.
+type ImageEvent struct {
+	Bytes     []byte
+	Sensitive bool
+}
+
+// WatchImages streams PNG-normalized clipboard images until ctx is canceled.
+func WatchImages(ctx context.Context) (<-chan ImageEvent, error) {
+	nativeInit.Do(func() { nativeInitErr = nativeclipboard.Init() })
+	if nativeInitErr != nil {
+		return nil, wrapError("system clipboard unavailable", nativeInitErr)
+	}
+	input := nativeclipboard.Watch(ctx, nativeclipboard.FmtImage)
+	output := make(chan ImageEvent)
+	go func() {
+		defer close(output)
+		for event := range input {
+			select {
+			case output <- ImageEvent{Bytes: event.Bytes, Sensitive: event.Sensitive}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return output, nil
+}
+
+// ReadImage returns the image currently stored on the clipboard. Clipboard
+// content marked sensitive is reported without reading its bytes.
+func ReadImage(ctx context.Context) (ImageEvent, error) {
+	nativeInit.Do(func() { nativeInitErr = nativeclipboard.Init() })
+	if nativeInitErr != nil {
+		return ImageEvent{}, wrapError("system clipboard unavailable", nativeInitErr)
+	}
+	if sensitive, _ := nativeclipboard.Sensitive(ctx); sensitive {
+		return ImageEvent{Sensitive: true}, nil
+	}
+	data, err := nativeclipboard.Read(ctx, nativeclipboard.FmtImage)
+	if err != nil {
+		return ImageEvent{}, wrapError("read clipboard image", err)
+	}
+	if len(data) == 0 {
+		return ImageEvent{}, errors.New("clipboard does not contain an image")
+	}
+	return ImageEvent{Bytes: data}, nil
 }
 
 // wrapError wraps an error with additional context.
@@ -33,6 +96,7 @@ func wrapError(message string, err error) error {
 type TestClipboard struct {
 	mu         sync.Mutex
 	copiedText string
+	copiedHTML string
 }
 
 // NewTestClipboard creates a new test clipboard.
@@ -45,6 +109,16 @@ func (t *TestClipboard) Copy(text string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.copiedText = text
+	t.copiedHTML = ""
+	return nil
+}
+
+// CopyRich records both clipboard representations for tests.
+func (t *TestClipboard) CopyRich(plainText, html string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.copiedText = plainText
+	t.copiedHTML = html
 	return nil
 }
 
@@ -55,11 +129,19 @@ func (t *TestClipboard) GetCopiedText() string {
 	return t.copiedText
 }
 
+// GetCopiedHTML returns the rich clipboard representation.
+func (t *TestClipboard) GetCopiedHTML() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.copiedHTML
+}
+
 // Reset clears the test clipboard.
 func (t *TestClipboard) Reset() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.copiedText = ""
+	t.copiedHTML = ""
 }
 
 // testClipboardImpl is a package-level variable that can be set for testing.
@@ -103,4 +185,32 @@ func copyNative(text string) error {
 		return wrapError("failed to copy text", err)
 	}
 	return nil
+}
+
+func copyRichNative(plainText, html string) error {
+	nativeInit.Do(func() { nativeInitErr = nativeclipboard.Init() })
+	if nativeInitErr != nil {
+		return wrapError("system clipboard unavailable", nativeInitErr)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := nativeclipboard.WriteAll(ctx, richClipboardOptions(plainText, html)...); err != nil {
+		return wrapError("failed to copy rich text", err)
+	}
+	return nil
+}
+
+func cfHTML(fragment string) []byte {
+	prefix := "<html><body><!--StartFragment-->"
+	suffix := "<!--EndFragment--></body></html>"
+	const headerTemplate = "Version:0.9\r\nStartHTML:%010d\r\nEndHTML:%010d\r\nStartFragment:%010d\r\nEndFragment:%010d\r\n"
+	// All four decimal fields have a fixed width, so formatting with zeroes
+	// first yields the exact byte offset at which the HTML begins.
+	headerLength := len(fmt.Sprintf(headerTemplate, 0, 0, 0, 0))
+	startHTML := headerLength
+	startFragment := startHTML + len(prefix)
+	endFragment := startFragment + len(fragment)
+	endHTML := endFragment + len(suffix)
+	header := fmt.Sprintf(headerTemplate, startHTML, endHTML, startFragment, endFragment)
+	return []byte(header + prefix + fragment + suffix)
 }
