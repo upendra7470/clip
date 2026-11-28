@@ -60,6 +60,7 @@ clip scanned-document.pdf      # OCR fallback happens automatically
 clip --image receipt.png       # explicit layout-aware image OCR
 clip --pdf report.pdf          # explicit layout-preserving PDF extraction
 clip --pdf --layout exact report.pdf # spatial plain-text layout
+clip --screen                  # select visible text anywhere on screen
 clip notes.txt 30-50           # only these lines
 clip --list workbook.xlsx      # inspect available units
 clip --ocr-status              # verify the bundled OCR engine
@@ -79,6 +80,7 @@ clip --completion zsh > ~/.zfunc/_clip
 
 - `--smart` normalizes contrast, upscales small scans, and produces clean Markdown.
 - `--image` and `--pdf` provide memorable explicit OCR/PDF workflows while the original automatic file detection remains supported.
+- `--screen` opens the operating system's region selector, runs offline OCR, copies the result, and deletes its private temporary screenshot.
 - `--layout auto|plain|exact` controls spatial reconstruction. `auto` preserves paragraphs and columns, while `exact` approximates source positioning with spaces.
 - `--format text|markdown|json|jsonl` selects structured output.
 - `--chunks N` creates Unicode-safe chunks for RAG and AI pipelines.
@@ -101,6 +103,7 @@ When only a filename is supplied, Clip can find it in the current directory, Dow
 - **Built-in OCR**—the engine and verified models ship inside the executable
 - **Scanned PDF intelligence**—native text and OCR are combined page by page for mixed PDFs
 - **Layout-aware copying**—paragraphs, rows, columns, and page boundaries survive extraction
+- **Instant screen OCR**—select visible text from videos, remote desktops, images, and applications that prevent normal copying
 - **Precise ranges**—copy only the pages, slides, rows, lines, or sections you want
 - **Fast on large files**—streaming and targeted extraction avoid unnecessary work
 - **Defensive parsing**—bounded reads, archive limits, image limits, and OCR timeouts
@@ -120,6 +123,10 @@ When only a filename is supplied, Clip can find it in the current directory, Dow
 | Images | `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tif`, `.tiff`, `.webp` | offline OCR |
 
 The current OCR model recognizes printed Latin-alphabet text. OCR quality depends on image resolution, contrast, orientation, and layout. Clip preserves logical text layout; plain-text clipboards cannot reproduce fonts, colors, images, or pixel-perfect document styling.
+
+### Screen OCR permissions
+
+`clip --screen` uses native operating-system capture controls. macOS may request Screen Recording permission on first use. Wayland displays the standard desktop-portal permission dialog. Windows and X11 show a temporary selection overlay. Captured pixels never leave the computer, and Clip's private screenshot copy is removed immediately after OCR.
 
 ## How the self-contained build works
 

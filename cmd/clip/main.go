@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 	"github.com/upendra7470/clip/internal/parser"
 	"github.com/upendra7470/clip/internal/registry"
 	"github.com/upendra7470/clip/internal/resolver"
+	"github.com/upendra7470/clip/internal/screencapture"
 	"github.com/upendra7470/clip/internal/security"
 	"github.com/upendra7470/clip/parsers/csv"
 	"github.com/upendra7470/clip/parsers/docx"
@@ -43,6 +45,8 @@ import (
 // Builds without injection (plain `go build`) report "dev".
 var version = "dev"
 
+var captureScreen = screencapture.Capture
+
 func Run(args []string, stdout, stderr io.Writer) int {
 	// Create a new FlagSet to avoid flag redefinition
 	flagSet := flag.NewFlagSet("clip", flag.ContinueOnError)
@@ -65,6 +69,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	imageFlag := flagSet.Bool("image", false, "Extract an image with layout-aware OCR")
 	pdfFlag := flagSet.Bool("pdf", false, "Extract a PDF while preserving its layout")
 	layoutFlag := flagSet.String("layout", "auto", "Layout reconstruction: auto, plain, or exact")
+	screenFlag := flagSet.Bool("screen", false, "Select a screen region and copy its text")
 	err := flagSet.Parse(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "Error parsing flags: %v\n", err)
@@ -98,6 +103,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	if *imageFlag && *pdfFlag {
 		fmt.Fprintln(stderr, "Error: --image and --pdf cannot be used together")
+		return 1
+	}
+	if *screenFlag && (*imageFlag || *pdfFlag || *listFlag || *inspectFlag || *recursiveFlag) {
+		fmt.Fprintln(stderr, "Error: --screen cannot be combined with file input modes, inspection, or recursion")
 		return 1
 	}
 	if _, err := clipLayout.ParseMode(*layoutFlag); err != nil {
@@ -249,6 +258,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	// Create application with registry and clipboard
 	app := application.New(reg, clipboardAdapter)
+	if *screenFlag {
+		if len(flagSet.Args()) != 0 {
+			fmt.Fprintln(stderr, "Error: --screen does not accept a filename")
+			return 1
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		return runScreenCapture(ctx, app, clipboardAdapter, outputFormat, *chunkSize, *outputPath, *stdoutFlag,
+			parser.Selection{Smart: *smartFlag, Language: *languageFlag, Layout: *layoutFlag}, stdout, stderr)
+	}
 
 	// Handle file argument
 	if len(flagSet.Args()) == 0 {
@@ -514,6 +533,8 @@ func showHelp() {
 	fmt.Println("    clip --smart scanned.pdf")
 	fmt.Println("    clip --image receipt.png")
 	fmt.Println("    clip --pdf --layout exact report.pdf")
+	fmt.Println("    clip --screen")
+	fmt.Println("    clip --screen --format markdown --stdout")
 	fmt.Println("    clip --format jsonl --chunks 1200 --stdout handbook.pdf")
 	fmt.Println("    clip --recursive --output knowledge.md ./documents")
 	fmt.Println()
@@ -546,6 +567,7 @@ func showHelp() {
 	fmt.Println("  --image             Run layout-aware OCR on an image")
 	fmt.Println("  --pdf               Preserve the spatial layout of a PDF")
 	fmt.Println("  --layout <mode>     auto, plain, or exact")
+	fmt.Println("  --screen            Select a screen region, OCR it, and copy the text")
 	fmt.Println("  --format <format>   text, markdown, json, or jsonl")
 	fmt.Println("  --chunks <size>     Create AI-ready chunks")
 	fmt.Println("  --output <file>     Write to a file instead of clipboard")
@@ -626,7 +648,7 @@ func validateOCRLanguage(language string) error {
 }
 
 func completionScript(shell string) (string, error) {
-	flags := "--help --version --list --inspect --ocr-status --smart --image --pdf --layout --format --chunks --output --stdout --recursive --lang --completion"
+	flags := "--help --version --list --inspect --ocr-status --smart --image --pdf --screen --layout --format --chunks --output --stdout --recursive --lang --completion"
 	switch strings.ToLower(shell) {
 	case "bash":
 		return "_clip() { COMPREPLY=( $(compgen -W '" + flags + "' -- \"${COMP_WORDS[COMP_CWORD]}\") ); }\ncomplete -F _clip clip\n", nil
@@ -643,6 +665,72 @@ func completionScript(shell string) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported shell %q", shell)
 	}
+}
+
+func runScreenCapture(
+	ctx context.Context,
+	app *application.Application,
+	clipboardAdapter *realClipboard,
+	outputFormat clipoutput.Format,
+	chunkSize int,
+	outputPath string,
+	stdoutFlag bool,
+	selection parser.Selection,
+	stdout, stderr io.Writer,
+) int {
+	statusWriter := stdout
+	if stdoutFlag {
+		statusWriter = stderr
+	}
+	fmt.Fprintln(statusWriter, "Select an area of the screen…")
+	capture, err := captureScreen(ctx)
+	if err != nil {
+		if errors.Is(err, screencapture.ErrCancelled) {
+			fmt.Fprintln(stderr, "Screen capture cancelled")
+			return 1
+		}
+		fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+	defer os.Remove(capture.Path)
+
+	result, err := app.ExtractText(ctx, capture.Path, nil, selection)
+	if err != nil {
+		fmt.Fprintf(stderr, "Error: screen OCR failed: %v\n", err)
+		return 1
+	}
+	rendered, err := clipoutput.Render([]clipoutput.Document{{
+		Source: "screen.png",
+		Type:   "png",
+		Text:   result.Text,
+	}}, outputFormat, chunkSize)
+	if err != nil {
+		fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+
+	destination := "clipboard"
+	switch {
+	case outputPath != "":
+		if err := os.WriteFile(outputPath, []byte(rendered), 0600); err != nil {
+			fmt.Fprintf(stderr, "Error: write output: %v\n", err)
+			return 1
+		}
+		destination = outputPath
+	case stdoutFlag:
+		fmt.Fprintln(stdout, rendered)
+		destination = "stdout"
+	default:
+		if err := clipboardAdapter.Copy(rendered); err != nil {
+			fmt.Fprintf(stderr, "Error: failed to copy to clipboard: %v\n", err)
+			return 1
+		}
+	}
+
+	fmt.Fprintf(statusWriter, "✓ Captured %d × %d\n", capture.Width, capture.Height)
+	fmt.Fprintf(statusWriter, "✓ Recognized %d words\n", len(strings.Fields(result.Text)))
+	fmt.Fprintf(statusWriter, "✓ Sent to %s\n", destination)
+	return 0
 }
 
 // getFilePathAndRangeFromArgs extracts the file path and optional range argument from parsed flag arguments.

@@ -2,13 +2,29 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/upendra7470/clip/internal/application"
+	clipoutput "github.com/upendra7470/clip/internal/output"
+	"github.com/upendra7470/clip/internal/parser"
+	"github.com/upendra7470/clip/internal/registry"
+	"github.com/upendra7470/clip/internal/screencapture"
 	"github.com/upendra7470/clip/internal/security"
+	"github.com/upendra7470/clip/parsers/ocr"
 )
+
+type screenOCRRunner struct{ text string }
+
+func (runner screenOCRRunner) Recognize(context.Context, string) (string, error) {
+	return runner.text, nil
+}
 
 func TestListReturnsFailureWhenInspectionFails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "broken.json")
@@ -109,6 +125,9 @@ func TestCompletionScript(t *testing.T) {
 	if !bytes.Contains([]byte(script), []byte("--smart")) {
 		t.Fatalf("completion missing v2 options: %s", script)
 	}
+	if !bytes.Contains([]byte(script), []byte("--screen")) {
+		t.Fatalf("completion missing screen OCR: %s", script)
+	}
 }
 
 func TestExplicitPDFRejectsNonPDF(t *testing.T) {
@@ -136,5 +155,70 @@ func TestRejectsInvalidLayout(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := Run([]string{"--layout", "visual", "anything.pdf"}, &stdout, &stderr); code == 0 {
 		t.Fatal("Run() accepted invalid layout")
+	}
+}
+
+func TestScreenRejectsFileModes(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--screen", "--pdf"}, &stdout, &stderr); code == 0 {
+		t.Fatal("Run() accepted --screen with --pdf")
+	}
+	if !bytes.Contains(stderr.Bytes(), []byte("--screen cannot be combined")) {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestScreenRejectsFilename(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--screen", "document.png"}, &stdout, &stderr); code == 0 {
+		t.Fatal("Run() accepted a filename with --screen")
+	}
+	if !bytes.Contains(stderr.Bytes(), []byte("does not accept a filename")) {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestRunScreenCaptureExtractsAndDeletesTemporaryImage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "screen.png")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img := image.NewRGBA(image.Rect(0, 0, 20, 10))
+	img.Set(0, 0, color.White)
+	if err := png.Encode(file, img); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	previousCapture := captureScreen
+	captureScreen = func(context.Context) (screencapture.Result, error) {
+		return screencapture.Result{Path: path, Width: 20, Height: 10}, nil
+	}
+	t.Cleanup(func() { captureScreen = previousCapture })
+
+	reg := registry.New()
+	imageParser := ocr.NewParserWithRunner(screenOCRRunner{text: "hello from screen"})
+	if err := reg.Register(imageParser.FileType(), imageParser); err != nil {
+		t.Fatal(err)
+	}
+	app := application.New(reg, &realClipboard{})
+	var stdout, stderr bytes.Buffer
+	code := runScreenCapture(context.Background(), app, &realClipboard{}, clipoutput.Text, 0, "", true,
+		parser.Selection{Layout: "plain"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runScreenCapture() = %d, stderr = %q", code, stderr.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte("hello from screen")) {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+	if !bytes.Contains(stderr.Bytes(), []byte("Captured 20 × 10")) || !bytes.Contains(stderr.Bytes(), []byte("Recognized 3 words")) {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("temporary screenshot still exists: %v", err)
 	}
 }
