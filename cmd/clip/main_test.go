@@ -173,6 +173,9 @@ func TestCompletionScript(t *testing.T) {
 	if !bytes.Contains([]byte(script), []byte("--auto")) {
 		t.Fatalf("completion missing v2.6 options: %s", script)
 	}
+	if !bytes.Contains([]byte(script), []byte("--enhance")) {
+		t.Fatalf("completion missing v2.7 options: %s", script)
+	}
 }
 
 func TestExplicitPDFRejectsNonPDF(t *testing.T) {

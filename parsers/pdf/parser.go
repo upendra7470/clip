@@ -260,7 +260,7 @@ func (p *Parser) ocrPages(ctx context.Context, path string, start, end int, sele
 
 	var result strings.Builder
 	for index, imagePath := range images {
-		text, err := ocr.RecognizeSmartLayout(ctx, imagePath, selection.Smart, selection.Layout)
+		text, err := ocr.RecognizeEnhancedLayout(ctx, imagePath, selection.Smart, selection.Enhance, selection.Layout)
 		if err != nil {
 			return parser.ParseResult{}, wrapError(fmt.Sprintf("failed to OCR extracted PDF image %d", index+1), err)
 		}

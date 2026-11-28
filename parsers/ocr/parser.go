@@ -181,6 +181,26 @@ func RecognizeSmart(ctx context.Context, file string, smart bool) (string, error
 
 // RecognizeSmartLayout performs OCR and reconstructs text using word geometry.
 func RecognizeSmartLayout(ctx context.Context, file string, smart bool, layoutValue string) (string, error) {
+	return RecognizeEnhancedLayout(ctx, file, smart, false, layoutValue)
+}
+
+// RecognizeEnhancedLayout performs optional multi-pass preprocessing and OCR
+// result selection in addition to smart layout reconstruction.
+func RecognizeEnhancedLayout(ctx context.Context, file string, smart, enhance bool, layoutValue string) (string, error) {
+	if enhance {
+		variants, cleanup, err := prepareEnhancedVariants(file)
+		if err != nil {
+			return "", err
+		}
+		defer cleanup()
+		ocrCtx, cancel := context.WithTimeout(ctx, security.MaxOCRDuration)
+		defer cancel()
+		mode, err := clipLayout.ParseMode(layoutValue)
+		if err != nil {
+			return "", err
+		}
+		return recognizeEnhanced(ocrCtx, bundledRunner{}, variants, mode)
+	}
 	prepared, cleanup, err := prepareImage(file, smart)
 	if err != nil {
 		return "", err
@@ -199,12 +219,6 @@ func RecognizeSmartLayout(ctx context.Context, file string, smart bool, layoutVa
 }
 
 func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
-	prepared, cleanup, err := prepareImage(req.File, req.Selection.Smart)
-	if err != nil {
-		return parser.ParseResult{}, err
-	}
-	defer cleanup()
-
 	ocrCtx, cancel := context.WithTimeout(ctx, security.MaxOCRDuration)
 	defer cancel()
 	mode, err := clipLayout.ParseMode(req.Selection.Layout)
@@ -213,10 +227,24 @@ func (p *Parser) ParseWithContext(ctx context.Context, req parser.ParseRequest) 
 	}
 
 	var text string
-	if req.Selection.Smart {
-		text, err = recognizeBestOrientationLayout(ocrCtx, p.runner, prepared, mode)
+	if req.Selection.Enhance {
+		variants, cleanup, prepareErr := prepareEnhancedVariants(req.File)
+		if prepareErr != nil {
+			return parser.ParseResult{}, prepareErr
+		}
+		defer cleanup()
+		text, err = recognizeEnhanced(ocrCtx, p.runner, variants, mode)
 	} else {
-		text, err = recognizeWithLayout(ocrCtx, p.runner, prepared, mode)
+		prepared, cleanup, prepareErr := prepareImage(req.File, req.Selection.Smart)
+		if prepareErr != nil {
+			return parser.ParseResult{}, prepareErr
+		}
+		defer cleanup()
+		if req.Selection.Smart {
+			text, err = recognizeBestOrientationLayout(ocrCtx, p.runner, prepared, mode)
+		} else {
+			text, err = recognizeWithLayout(ocrCtx, p.runner, prepared, mode)
+		}
 	}
 	if err != nil {
 		return parser.ParseResult{}, err

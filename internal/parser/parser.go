@@ -26,6 +26,9 @@ type Selection struct {
 	Query string
 	// Smart enables OCR cleanup and other format-specific quality improvements.
 	Smart bool
+	// Enhance enables multi-pass preprocessing and OCR result selection for
+	// difficult, rotated, low-contrast, or skewed scans.
+	Enhance bool
 	// Language is an OCR language hint. "auto" detects supported Latin-script text.
 	Language string
 	// Layout controls spatial reconstruction: auto, plain, or exact.

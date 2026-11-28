@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Adaptive multi-pass OCR with `--enhance` across files, PDFs, screen capture, clipboard workflows, and universal input
+- Automatic contrast normalization, Otsu binarization, dark-background inversion, small-angle deskewing, and four-way orientation testing
+- Readability-based OCR candidate scoring that chooses the strongest recognition pass within the existing OCR timeout
 - Universal clipboard routing with `clip --auto` for images, local paths, public HTTPS documents, and text
 - Secure remote-document extraction with redirect validation, public-network enforcement, bounded downloads, and private cleanup
 - Full structured output, chunking, rich copy, stdout, and file-output support for universal clipboard input
@@ -46,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
+- Difficult scans can opt into multiple preprocessing strategies without external image tools or cloud services
 - Clipboard watch isolates each image in a private temporary file, removes it immediately, and continues after malformed images
 - PDF processing now uses a stateless embedded configuration and never needs to create external pdfcpu settings
 - Searchable-PDF output uses private temporary files, atomic publication, and refuses accidental overwrites

@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,12 +21,86 @@ type fakeRunner struct {
 type sequenceRunner struct {
 	outputs []string
 	calls   int
+	paths   []string
 }
 
-func (r *sequenceRunner) Recognize(context.Context, string) (string, error) {
+func (r *sequenceRunner) Recognize(_ context.Context, path string) (string, error) {
+	r.paths = append(r.paths, path)
 	output := r.outputs[r.calls]
 	r.calls++
 	return output, nil
+}
+
+func TestEnhancedOCRChoosesBestPassAndDeletesVariants(t *testing.T) {
+	path := testImage(t, 40, 40)
+	runner := &sequenceRunner{outputs: []string{
+		"n0ise !!!",
+		"clean invoice total 125.00",
+		"side",
+		"upside down",
+		"other side",
+	}}
+	p := NewParserWithRunner(runner)
+	result, err := p.ParseWithContext(context.Background(), parser.ParseRequest{
+		File:      path,
+		Selection: parser.Selection{Enhance: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "clean invoice total 125.00" {
+		t.Fatalf("Text = %q", result.Text)
+	}
+	if runner.calls != 5 {
+		t.Fatalf("OCR calls = %d, want 5", runner.calls)
+	}
+	for _, temporary := range runner.paths {
+		if _, err := os.Stat(temporary); !os.IsNotExist(err) {
+			t.Fatalf("OCR temporary file remains: %s", temporary)
+		}
+	}
+}
+
+func TestOtsuBinarizeNormalizesDarkBackground(t *testing.T) {
+	image := image.NewGray(image.Rect(0, 0, 4, 1))
+	image.Pix = []byte{10, 10, 240, 10}
+	result := otsuBinarize(image)
+	if result.Pix[2] != 0 {
+		t.Fatalf("light text pixel = %d, want black", result.Pix[2])
+	}
+	if result.Pix[0] != 255 {
+		t.Fatalf("dark background pixel = %d, want white", result.Pix[0])
+	}
+}
+
+func TestTextQualityScoreRewardsReadableWords(t *testing.T) {
+	readable := textQualityScore("Invoice total 125.00 due tomorrow")
+	noise := textQualityScore("! | / ? �\x00")
+	if readable <= noise {
+		t.Fatalf("readable score %d <= noise score %d", readable, noise)
+	}
+}
+
+func TestEstimateSkewFindsAndCorrectsTextLines(t *testing.T) {
+	page := image.NewGray(image.Rect(0, 0, 240, 140))
+	for index := range page.Pix {
+		page.Pix[index] = 255
+	}
+	for _, y := range []int{30, 55, 80, 105} {
+		for x := 25; x < 215; x++ {
+			page.SetGray(x, y, color.Gray{Y: 0})
+			page.SetGray(x, y+1, color.Gray{Y: 0})
+		}
+	}
+	skewed := rotateSmall(page, 2)
+	angle := estimateSkew(skewed)
+	if math.Abs(math.Abs(angle)-2) > 0.6 {
+		t.Fatalf("estimated angle = %.1f, want magnitude near 2", angle)
+	}
+	corrected := rotateSmall(skewed, angle)
+	if residual := math.Abs(estimateSkew(corrected)); residual > 0.6 {
+		t.Fatalf("residual angle = %.1f after correction", residual)
+	}
 }
 
 func (f fakeRunner) Recognize(context.Context, string) (string, error) {

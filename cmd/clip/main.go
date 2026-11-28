@@ -70,6 +70,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	outputPath := flagSet.String("output", "", "Write extracted content to a file instead of the clipboard")
 	stdoutFlag := flagSet.Bool("stdout", false, "Write extracted content to standard output")
 	smartFlag := flagSet.Bool("smart", false, "Enable OCR cleanup and structure-preserving Markdown output")
+	enhanceFlag := flagSet.Bool("enhance", false, "Use multi-pass preprocessing for difficult OCR")
 	recursiveFlag := flagSet.Bool("recursive", false, "Process supported files in subdirectories")
 	languageFlag := flagSet.String("lang", "auto", "OCR language hint: auto, latin, en, fr, de, es, it, pt, or nl")
 	completionFlag := flagSet.String("completion", "", "Print shell completion: bash, zsh, fish, or powershell")
@@ -312,10 +313,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, "Error: refusing to process sensitive clipboard content")
 			return 1
 		}
-		selection := parser.Selection{Smart: *smartFlag, Language: *languageFlag, Layout: *layoutFlag}
+		selection := parser.Selection{Smart: *smartFlag, Enhance: *enhanceFlag, Language: *languageFlag, Layout: *layoutFlag}
 		if len(snapshot.Image) > 0 {
 			text, err := clipboardocr.RecognizeOnce(ctx, clipboard.ImageEvent{Bytes: snapshot.Image}, func(ctx context.Context, path string) (string, error) {
-				return ocr.RecognizeSmartLayout(ctx, path, selection.Smart, selection.Layout)
+				return ocr.RecognizeEnhancedLayout(ctx, path, selection.Smart, selection.Enhance, selection.Layout)
 			})
 			if err != nil {
 				fmt.Fprintf(stderr, "Error: %v\n", err)
@@ -388,7 +389,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			Rich:   *richFlag,
 			Stdout: *stdoutFlag,
 		}, func(ctx context.Context, path string) (string, error) {
-			return ocr.RecognizeSmartLayout(ctx, path, *smartFlag, *layoutFlag)
+			return ocr.RecognizeEnhancedLayout(ctx, path, *smartFlag, *enhanceFlag, *layoutFlag)
 		}, clipboardAdapter, stdout, stderr)
 		if err != nil {
 			fmt.Fprintf(stderr, "Error: %v\n", err)
@@ -418,7 +419,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			Rich:   *richFlag,
 			Stdout: *stdoutFlag,
 		}, func(ctx context.Context, path string) (string, error) {
-			return ocr.RecognizeSmartLayout(ctx, path, *smartFlag, *layoutFlag)
+			return ocr.RecognizeEnhancedLayout(ctx, path, *smartFlag, *enhanceFlag, *layoutFlag)
 		}, clipboardAdapter, stdout, stderr)
 		if err != nil {
 			fmt.Fprintf(stderr, "Error: %v\n", err)
@@ -435,7 +436,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		return runScreenCapture(ctx, app, clipboardAdapter, outputFormat, *chunkSize, *outputPath, *stdoutFlag, *richFlag,
-			parser.Selection{Smart: *smartFlag, Language: *languageFlag, Layout: *layoutFlag}, stdout, stderr)
+			parser.Selection{Smart: *smartFlag, Enhance: *enhanceFlag, Language: *languageFlag, Layout: *layoutFlag}, stdout, stderr)
 	}
 
 	// Handle file argument
@@ -506,7 +507,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			destination = searchableOutputPath(resolvedPath)
 		}
 		pages, err := searchablepdf.Create(ctx, app, resolvedPath, destination, parser.Selection{
-			Smart: true, Language: *languageFlag, Layout: *layoutFlag,
+			Smart: true, Enhance: *enhanceFlag, Language: *languageFlag, Layout: *layoutFlag,
 		})
 		if err != nil {
 			fmt.Fprintf(stderr, "Error: %v\n", err)
@@ -538,7 +539,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 	}
-	v2Mode := *autoFlag || *smartFlag || *imageFlag || *pdfFlag || *richFlag || *layoutFlag != "auto" || *formatFlag != "text" || *chunkSize > 0 || *outputPath != "" || *stdoutFlag || *recursiveFlag || *languageFlag != "auto" || info.IsDir()
+	v2Mode := *autoFlag || *smartFlag || *enhanceFlag || *imageFlag || *pdfFlag || *richFlag || *layoutFlag != "auto" || *formatFlag != "text" || *chunkSize > 0 || *outputPath != "" || *stdoutFlag || *recursiveFlag || *languageFlag != "auto" || info.IsDir()
 	if v2Mode {
 		paths := []string{resolvedPath}
 		if info.IsDir() {
@@ -548,7 +549,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 				return 1
 			}
 		}
-		selection := parser.Selection{Smart: *smartFlag, Language: *languageFlag, Layout: *layoutFlag}
+		selection := parser.Selection{Smart: *smartFlag, Enhance: *enhanceFlag, Language: *languageFlag, Layout: *layoutFlag}
 		documents, err := extractDocuments(ctx, app, paths, rangeObj, selection)
 		if err != nil {
 			fmt.Fprintf(stderr, "Error: %v\n", err)
@@ -739,6 +740,8 @@ func showHelp() {
 	fmt.Println("    clip --clipboard --smart --stdout")
 	fmt.Println("    clip --auto")
 	fmt.Println("    clip --auto --smart --format json --stdout")
+	fmt.Println("    clip --enhance difficult-scan.png")
+	fmt.Println("    clip --screen --enhance --layout exact")
 	fmt.Println("    clip --format jsonl --chunks 1200 --stdout handbook.pdf")
 	fmt.Println("    clip --recursive --output knowledge.md ./documents")
 	fmt.Println()
@@ -768,6 +771,7 @@ func showHelp() {
 	fmt.Println()
 	fmt.Println("Advanced OCR and workflow options:")
 	fmt.Println("  --smart             Clean OCR and preserve structure as Markdown")
+	fmt.Println("  --enhance           Run adaptive multi-pass OCR for difficult scans")
 	fmt.Println("  --image             Run layout-aware OCR on an image")
 	fmt.Println("  --pdf               Preserve the spatial layout of a PDF")
 	fmt.Println("  --layout <mode>     auto, plain, or exact")
@@ -896,7 +900,7 @@ func validateOCRLanguage(language string) error {
 }
 
 func completionScript(shell string) (string, error) {
-	flags := "--help --version --list --inspect --ocr-status --smart --image --pdf --screen --rich --make-searchable --watch --clipboard --auto --layout --format --chunks --output --stdout --recursive --lang --completion"
+	flags := "--help --version --list --inspect --ocr-status --smart --enhance --image --pdf --screen --rich --make-searchable --watch --clipboard --auto --layout --format --chunks --output --stdout --recursive --lang --completion"
 	switch strings.ToLower(shell) {
 	case "bash":
 		return "_clip() { COMPREPLY=( $(compgen -W '" + flags + "' -- \"${COMP_WORDS[COMP_CWORD]}\") ); }\ncomplete -F _clip clip\n", nil
